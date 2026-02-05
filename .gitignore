@@ -1,0 +1,29 @@
+# Конфиг (API ключи, телефон)
+config.json
+
+# Сборка
+build/
+dist/
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Лицензия (привязка к машине)
+.license
+
+# Скрипт с токеном (не коммитить!)
+push_with_token.bat
+
+# Временные файлы
+*.log
+.mass_msg_temp
+.progress
+.progress_*
+members.txt
+stats.txt
