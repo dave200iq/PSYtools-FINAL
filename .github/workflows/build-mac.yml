@@ -21,15 +21,24 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyinstaller
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller Psylocyba_Tools_mac.spec
+          python -m PyInstaller Psylocyba_Tools_mac.spec --noconfirm
 
       - name: Create ZIP archive
         run: |
-          cd dist && zip -r ../Psylocyba_Tools-Mac.zip Psylocyba_Tools.app && cd ..
+          cd dist
+          if [ -d "Psylocyba_Tools.app" ]; then
+            zip -r ../Psylocyba_Tools-Mac.zip Psylocyba_Tools.app
+          elif [ -d "Psylocyba_Tools" ]; then
+            zip -r ../Psylocyba_Tools-Mac.zip Psylocyba_Tools
+          else
+            echo "Build output not found"
+            ls -la
+            exit 1
+          fi
+          cd ..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
