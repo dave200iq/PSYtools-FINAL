@@ -3,7 +3,7 @@ name: Build Mac
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:  # Ручной запуск из GitHub
+  workflow_dispatch:
 
 jobs:
   build-mac:
@@ -22,9 +22,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (CLI)
         run: |
-          python -m PyInstaller Psylocyba_Tools_mac.spec --noconfirm
+          python -m PyInstaller --onedir --windowed -n Psylocyba_Tools \
+            --add-data "scripts:scripts" \
+            --hidden-import telethon --hidden-import customtkinter \
+            --hidden-import PIL --hidden-import rsa \
+            --collect-all customtkinter \
+            --noconfirm \
+            app.py
 
       - name: Create ZIP archive
         run: |
@@ -34,7 +40,7 @@ jobs:
           elif [ -d "Psylocyba_Tools" ]; then
             zip -r ../Psylocyba_Tools-Mac.zip Psylocyba_Tools
           else
-            echo "Build output not found"
+            echo "=== dist contents ==="
             ls -la
             exit 1
           fi
