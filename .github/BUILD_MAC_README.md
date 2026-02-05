@@ -1,32 +1,20 @@
-# Сборка Psylocyba Tools для macOS через GitHub Actions
+# Сборка Psylocyba Tools (Mac + Windows) через GitHub Actions
 
 ## Как использовать
 
-1. **Создайте репозиторий** на GitHub (можно приватный).
+1. **Push** в ветку `main` или `master` — автоматически собираются **обе версии** (Mac и Windows).
 
-2. **Загрузите проект** в репозиторий:
-   ```bash
-   cd "C:\Users\dave2\OneDrive\Рабочий стол\Psylocyba_Tools"
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin https://github.com/ВАШ_ЛОГИН/Psylocyba_Tools.git
-   git push -u origin main
-   ```
-   (Если основная ветка — `master`, измените в команде.)
+2. **Скачать результат:**
+   - GitHub → **Actions** → выберите завершённый workflow **Build (Mac + Windows)**.
+   - Внизу в **Artifacts** будут:
+     - **Psylocyba_Tools-Mac** — для macOS (.app)
+     - **Psylocyba_Tools-Windows** — для Windows (.exe)
 
-3. **Запуск сборки:**
-   - При каждом `git push` в ветку `main`/`master` сборка запускается автоматически.
-   - Либо: GitHub → вкладка **Actions** → **Build Mac** → **Run workflow** (ручной запуск).
+3. **На Mac:** распакуйте ZIP, перетащите `Psylocyba_Tools.app` в Applications.
 
-4. **Скачать результат:**
-   - GitHub → **Actions** → выберите завершённый workflow.
-   - Внизу страницы в разделе **Artifacts** нажмите **Psylocyba_Tools-Mac**.
-   - Скачается архив `Psylocyba_Tools-Mac.zip` с `Psylocyba_Tools.app` внутри.
-
-5. **На Mac:** распакуйте ZIP, перетащите `Psylocyba_Tools.app` в «Программы» (Applications) и запустите.
+4. **На Windows:** распакуйте ZIP, запустите `Psylocyba_Tools.exe`.
 
 ## Важно
 
-- Перед push добавьте `config.json` в `.gitignore`, если в нём хранятся API-ключи.
-- Для приватного репозитория бесплатно доступно 2000 минут GitHub Actions в месяц.
+- `config.json` в `.gitignore` — API-ключи не попадают в репо.
+- Для приватного репо: 2000 минут GitHub Actions в месяц бесплатно.

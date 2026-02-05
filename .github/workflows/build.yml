@@ -1,0 +1,98 @@
+name: Build (Mac + Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия (например 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install & Build Mac
+        run: |
+          pip install -r requirements.txt
+          python -m PyInstaller --onedir --windowed -n Psylocyba_Tools \
+            --add-data "scripts:scripts" \
+            --hidden-import telethon --hidden-import customtkinter \
+            --hidden-import PIL --hidden-import rsa \
+            --collect-all customtkinter --noconfirm app.py
+
+      - name: ZIP Mac
+        run: |
+          cd dist
+          if [ -d "Psylocyba_Tools.app" ]; then
+            zip -r ../Psylocyba_Tools-Mac.zip Psylocyba_Tools.app
+          else
+            zip -r ../Psylocyba_Tools-Mac.zip Psylocyba_Tools
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Psylocyba_Tools-Mac
+          path: Psylocyba_Tools-Mac.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install & Build Windows
+        run: |
+          pip install -r requirements.txt
+          python -m PyInstaller Psylocyba_Tools.spec --noconfirm
+
+      - name: ZIP Windows
+        run: |
+          Compress-Archive -Path "dist\Psylocyba_Tools.exe" -DestinationPath "Psylocyba_Tools-Windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Psylocyba_Tools-Windows
+          path: Psylocyba_Tools-Windows.zip
+
+  release:
+    needs: [build-mac, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Psylocyba_Tools-Mac
+      - uses: actions/download-artifact@v4
+        with:
+          name: Psylocyba_Tools-Windows
+
+      - name: Prepare release files
+        run: |
+          mv Psylocyba_Tools-Mac/*.zip . 2>/dev/null || true
+          mv Psylocyba_Tools-Windows/*.zip . 2>/dev/null || true
+          ls -la *.zip
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Psylocyba Tools v${{ github.event.inputs.version }}
+          body: |
+            **Mac:** скачай Psylocyba_Tools-Mac.zip
+            **Windows:** скачай Psylocyba_Tools-Windows.zip
+          files: |
+            Psylocyba_Tools-Mac.zip
+            Psylocyba_Tools-Windows.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
