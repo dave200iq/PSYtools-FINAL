@@ -13,10 +13,7 @@ Windows desktop app for Telegram: clone groups and channels, export subscribers.
 
 ## Download
 
-**[→ Скачать обе версии (Mac + Windows)](https://github.com/dave200iq/PSYtools/releases)**
-
-- **Mac:** Psylocyba_Tools-Mac.zip → распаковать и запустить .app
-- **Windows:** Psylocyba_Tools-Windows.zip → распаковать и запустить .exe
+**[→ Скачать Mac и Windows](https://github.com/dave200iq/PSYtools-Releases/releases)** — только приложения, без кода.
 
 **Требования:** macOS 10.15+ / Windows 10/11
 

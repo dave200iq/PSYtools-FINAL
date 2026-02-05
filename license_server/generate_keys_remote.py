@@ -24,7 +24,8 @@ def add_key(base_url, key):
     data = urllib.parse.urlencode({"key": key}).encode()
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req, timeout=30) as r:
+    # Render free tier: холодный старт ~50–60 сек, увеличиваем таймаут
+    with urllib.request.urlopen(req, timeout=90) as r:
         resp = r.read().decode()
         return "ok" in resp and "true" in resp
 
@@ -46,13 +47,19 @@ def main():
     print(f"Генерация {n} ключей...\n")
     for i in range(n):
         key = gen_key()
-        try:
-            if add_key(base, key):
-                print(key)
-            else:
-                print(f"{key} — ошибка (возможно, уже есть)")
-        except Exception as e:
-            print(f"{key} — ошибка: {e}")
+        for attempt in range(2):
+            try:
+                if add_key(base, key):
+                    print(key)
+                    break
+                else:
+                    print(f"{key} — ошибка (возможно, уже есть)")
+                    break
+            except Exception as e:
+                if attempt == 0:
+                    print(f"{key} — таймаут, повтор...")
+                else:
+                    print(f"{key} — ошибка: {e}")
     print("\nГотово.")
 
 

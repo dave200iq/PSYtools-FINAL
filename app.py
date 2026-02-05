@@ -66,15 +66,20 @@ def verify_license(key, hwid):
         return False, "invalid"
     key = key.strip().upper().replace(" ", "-")
     url = f"{LICENSE_SERVER_URL.rstrip('/')}/verify?key={quote(key)}&hwid={quote(hwid)}"
-    try:
-        req = Request(url, headers={"User-Agent": "PsylocybaTools/1.0"})
-        with urlopen(req, timeout=30) as r:
-            data = json.loads(r.read().decode())
-            if data.get("valid"):
-                return True, None
-            return False, data.get("error", "invalid")
-    except (URLError, HTTPError, json.JSONDecodeError, OSError) as e:
-        return False, "network"
+    import time
+    for attempt in range(3):
+        try:
+            req = Request(url, headers={"User-Agent": "PsylocybaTools/1.0"})
+            with urlopen(req, timeout=90) as r:
+                data = json.loads(r.read().decode())
+                if data.get("valid"):
+                    return True, None
+                return False, data.get("error", "invalid")
+        except (URLError, HTTPError, json.JSONDecodeError, OSError):
+            if attempt < 2:
+                time.sleep(5)
+            else:
+                return False, "network"
 
 
 def load_config():
@@ -407,7 +412,7 @@ LANG = {
         "license_activate": "Активировать",
         "license_invalid": "Неверный ключ.",
         "license_bound": "Ключ привязан к другому компьютеру.",
-        "license_network": "Ошибка соединения. Проверьте интернет.",
+        "license_network": "Сервер недоступен. Подождите минуту и попробуйте снова.",
         "mass_send": "Массовая рассылка",
         "stats": "Статистика",
         "link_mass": "Ссылка канала/группы:",
@@ -484,7 +489,7 @@ LANG = {
         "license_activate": "Activate",
         "license_invalid": "Invalid key.",
         "license_bound": "Key is bound to another computer.",
-        "license_network": "Connection error. Check your internet.",
+        "license_network": "Server unavailable. Wait a minute and try again.",
         "mass_send": "Mass Mailing",
         "stats": "Statistics",
         "link_mass": "Channel/group link:",
