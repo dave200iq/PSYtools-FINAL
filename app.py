@@ -420,7 +420,7 @@ LANG = {
         "progress_exporting": "Экспорт: {n}",
         "license_title": "Лицензия",
         "license_enter": "Введите лицензионный ключ:",
-        "license_activate": "Активировать",
+        "license_activate": "Активировать (или Enter)",
         "license_invalid": "Неверный ключ.",
         "license_bound": "Ключ привязан к другому компьютеру.",
         "license_network": "Сервер недоступен. Подождите минуту и попробуйте снова.",
@@ -497,7 +497,7 @@ LANG = {
         "progress_exporting": "Exporting: {n}",
         "license_title": "License",
         "license_enter": "Enter license key:",
-        "license_activate": "Activate",
+        "license_activate": "Activate (or Enter)",
         "license_invalid": "Invalid key.",
         "license_bound": "Key is bound to another computer.",
         "license_network": "Server unavailable. Wait a minute and try again.",
@@ -665,9 +665,12 @@ def _show_license_dialog():
     _ctk.CTkLabel(frame, text=t("license_enter"), font=_ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(20, 8))
     entry = _ctk.CTkEntry(frame, width=360, height=40, placeholder_text="XXXX-XXXX-XXXX-XXXX")
     entry.pack(padx=20, pady=(0, 20))
-    _ctk.CTkButton(frame, text=t("license_activate"), width=140, height=36, command=on_activate,
-                   fg_color="#00ff88", text_color="#000").pack(pady=(0, 20))
+    btn = _ctk.CTkButton(frame, text=t("license_activate"), width=140, height=36, command=on_activate,
+                         fg_color="#00ff88", text_color="#000", cursor="hand2")
+    btn.pack(pady=(0, 20))
+    entry.bind("<Return>", lambda e: on_activate())
     entry.focus()
+    root.after(100, lambda: entry.focus_force())
 
     root.mainloop()
     return result[0] is True
