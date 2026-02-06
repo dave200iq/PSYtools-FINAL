@@ -630,22 +630,33 @@ def _show_license_dialog():
     t = lambda k: LANG.get(lang, LANG["en"]).get(k, k)
 
     if sys.platform == "darwin":
-        # Нативный диалог macOS — 100% работает, обходит баги tk/CTk
-        prompt = t("license_enter").replace("\\", "\\\\").replace('"', '\\"')
+        # Нативный диалог macOS — только ASCII для надёжности в .app
         script = (
-            'set r to display dialog "' + prompt + '" default answer "" '
-            'with title "' + t("license_title").replace('"', "'") + '" '
-            'buttons {"Activate", "Cancel"} default button 1\n'
+            'set r to display dialog "Enter license key:" default answer "" '
+            'with title "License" buttons {"Activate", "Cancel"} default button 1\n'
             'if button returned of r is "Activate" then return text returned of r else return ""'
         )
+        key = ""
         try:
             r = subprocess.run(
-                ["osascript", "-e", script],
+                ["/usr/bin/osascript", "-e", script],
                 capture_output=True, text=True, timeout=300,
+                env=dict(os.environ, PATH="/usr/bin:/bin:/usr/sbin:/sbin"),
             )
             key = (r.stdout or "").strip() if r.returncode == 0 else ""
         except Exception:
-            key = ""
+            pass
+        if not key:
+            try:
+                import tkinter as tk
+                from tkinter import simpledialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes("-topmost", True)
+                key = simpledialog.askstring("License", "Enter license key:", parent=root) or ""
+                root.destroy()
+            except Exception:
+                pass
         if not key:
             return False
     else:
