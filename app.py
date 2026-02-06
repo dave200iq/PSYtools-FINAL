@@ -29,8 +29,17 @@ def get_app_dir():
     return Path(__file__).resolve().parent
 
 APP_DIR = get_app_dir()
-CONFIG_PATH = APP_DIR / "config.json"
-LICENSE_PATH = APP_DIR / ".license"
+# На Mac в .app писать нельзя — конфиг и лицензия в папку пользователя
+if sys.platform == "darwin" and getattr(sys, "frozen", False):
+    _user_data = Path.home() / "Library" / "Application Support" / "Psylocyba_Tools"
+    _user_data.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH = _user_data / "config.json"
+    LICENSE_PATH = _user_data / ".license"
+    USER_DATA_DIR = _user_data
+else:
+    CONFIG_PATH = APP_DIR / "config.json"
+    LICENSE_PATH = APP_DIR / ".license"
+    USER_DATA_DIR = APP_DIR
 SCRIPTS_DIR = APP_DIR / "scripts"
 
 # На macOS без этого SSL-подключение (в т.ч. Telethon) может молча падать
@@ -156,7 +165,7 @@ def run_script_in_process(script_name: str, args: list, log_widget, root, on_don
     log_widget.insert("end", f"Run: {script_name}\n\n")
 
     def run():
-        os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+        os.environ["TELEGRAM_APP_DIR"] = str(USER_DATA_DIR)
         sys.path.insert(0, str(scripts_path))
         old_stdout = sys.stdout
         try:
@@ -355,7 +364,7 @@ def _run_auth_gui(root, log_widget):
 
     async def _auth_task():
         root.after(0, lambda: log_widget.insert("end", "[DEBUG] _auth_task started\n"))
-        os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+        os.environ["TELEGRAM_APP_DIR"] = str(USER_DATA_DIR)
         if sys.platform == "darwin":
             try:
                 import certifi
@@ -377,7 +386,7 @@ def _run_auth_gui(root, log_widget):
             root.after(0, lambda: log_widget.insert("end", "Error: install telethon.\n"))
             _notify_error("Установите telethon." if cfg.get("lang") == "ru" else "Install telethon.")
             return
-        session_path = str(APP_DIR / "session_export")
+        session_path = str(USER_DATA_DIR / "session_export")
         client = TelegramClient(session_path, int(api_id), api_hash)
 
         def code_callback():
@@ -1052,7 +1061,7 @@ class CtkApp(ctk.CTk):
                           text_color="#000", command=self.do_install).pack(side="left", padx=(0, 12))
         ctk.CTkButton(btn_row, text=t("auth"), width=120, height=38, corner_radius=12,
                       font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
-                      command=lambda: (self.save_settings(silent=True), run_auth(self, self.log))).pack(side="left")
+                      command=self._on_auth_click).pack(side="left")
 
         self.tabview = ctk.CTkTabview(
             self, fg_color=self.bg_card, corner_radius=18,
@@ -1307,6 +1316,14 @@ class CtkApp(ctk.CTk):
                       command=top.destroy).pack(pady=(14, 0))
         top.after(50, lambda: animate_fade_in(top))
 
+    def _on_auth_click(self):
+        """Нажатие «Авторизация»: сначала сохраняем настройки; на Mac save может падать — тогда всё равно запускаем авторизацию."""
+        try:
+            self.save_settings(silent=True)
+        except Exception:
+            pass
+        run_auth(self, self.log)
+
     def save_settings(self, silent=False):
         cfg = load_config()
         cfg["api_id"] = self.entry_api_id.get().strip()
@@ -1462,7 +1479,7 @@ def _run_script_mode():
 
     name = argv[1]
     args = argv[2:]
-    os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+    os.environ["TELEGRAM_APP_DIR"] = str(USER_DATA_DIR)
     scripts_path = Path(sys._MEIPASS) / "scripts" if getattr(sys, "frozen", False) else SCRIPTS_DIR
     sys.path.insert(0, str(scripts_path))
     try:
