@@ -33,6 +33,15 @@ CONFIG_PATH = APP_DIR / "config.json"
 LICENSE_PATH = APP_DIR / ".license"
 SCRIPTS_DIR = APP_DIR / "scripts"
 
+# На macOS без этого SSL-подключение (в т.ч. Telethon) может молча падать
+if sys.platform == "darwin":
+    try:
+        import certifi
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+    except Exception:
+        pass
+
 
 def get_hwid():
     """Идентификатор компьютера для привязки ключа."""
@@ -338,6 +347,21 @@ def _run_auth_gui(root, log_widget):
 
     async def _auth_task():
         os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+        if sys.platform == "darwin":
+            try:
+                import certifi
+                os.environ["SSL_CERT_FILE"] = certifi.where()
+                os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+                # Telethon использует ssl.create_default_context() без cafile — на Mac без certifi падает
+                _orig_ssl = ssl.create_default_context
+                def _ssl_with_certifi(**kwargs):
+                    if "cafile" not in kwargs:
+                        kwargs = dict(kwargs)
+                        kwargs["cafile"] = certifi.where()
+                    return _orig_ssl(**kwargs)
+                ssl.create_default_context = _ssl_with_certifi
+            except Exception:
+                pass
         try:
             from telethon import TelegramClient
         except ImportError:
@@ -376,11 +400,27 @@ def _run_auth_gui(root, log_widget):
             await client.disconnect()
 
     def run():
-        root.after(0, lambda: (log_widget.delete("1.0", "end"), log_widget.insert("end", "Authorization...\n")))
         import time
+        root.after(0, lambda: (log_widget.delete("1.0", "end"), log_widget.insert("end", "Authorization...\n")))
         time.sleep(0.3)  # дать GUI обновиться
-        asyncio.run(_auth_task())
-        root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
+        try:
+            if sys.platform == "darwin":
+                # На Mac явный event loop в потоке избегает проблем с asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(_auth_task())
+                finally:
+                    loop.close()
+            else:
+                asyncio.run(_auth_task())
+            root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
+        except Exception as e:
+            err_msg = str(e)
+            root.after(0, lambda: log_widget.insert("end", f"Error: {err_msg}\n"))
+            _notify_error(
+                f"{'Ошибка авторизации' if cfg.get('lang') == 'ru' else 'Authorization failed'}: {err_msg}"
+            )
 
     threading.Thread(target=run, daemon=True).start()
 
