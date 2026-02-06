@@ -622,54 +622,80 @@ def _check_license_sync():
 
 
 def _show_license_dialog():
-    """Диалог ввода ключа. Стандартный tkinter — стабильно на Mac (CTk-кнопка там глючит)."""
+    """Диалог ввода ключа. На Mac — нативный osascript (tk/CTk там глючат с кликами)."""
     if not _license_check_enabled():
         return True
-    import tkinter as tk
-    from tkinter import messagebox
     cfg = load_config()
     lang = cfg.get("lang", "ru")
     t = lambda k: LANG.get(lang, LANG["en"]).get(k, k)
 
-    root = tk.Tk()
-    root.title(t("license_title"))
-    root.geometry("420x180")
-    root.resizable(False, False)
-    root.configure(bg="#1a1a2e")
-
-    result = [None]
-
-    def on_activate():
-        key = entry.get().strip()
+    if sys.platform == "darwin":
+        # Нативный диалог macOS — 100% работает, обходит баги tk/CTk
+        prompt = t("license_enter").replace("\\", "\\\\").replace('"', '\\"')
+        script = (
+            'set r to display dialog "' + prompt + '" default answer "" '
+            'with title "' + t("license_title").replace('"', "'") + '" '
+            'buttons {"Activate", "Cancel"} default button 1\n'
+            'if button returned of r is "Activate" then return text returned of r else return ""'
+        )
+        try:
+            r = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, text=True, timeout=300,
+            )
+            key = (r.stdout or "").strip() if r.returncode == 0 else ""
+        except Exception:
+            key = ""
         if not key:
-            messagebox.showwarning("", t("license_enter"))
-            return
-        hwid = get_hwid()
-        valid, err = verify_license(key, hwid)
-        if valid:
-            save_license(key)
-            result[0] = True
-            root.destroy()
-        else:
-            if err == "invalid":
-                msg = t("license_invalid")
-            elif err == "key_bound":
-                msg = t("license_bound")
-            else:
-                msg = t("license_network")
-            messagebox.showerror("", msg)
+            return False
+    else:
+        # Windows/Linux — tkinter
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.title(t("license_title"))
+        root.geometry("420x180")
+        root.resizable(False, False)
+        root.configure(bg="#1a1a2e")
+        result = [None]
 
-    tk.Label(root, text=t("license_enter"), fg="#00ffe8", bg="#1a1a2e", font=("Segoe UI", 12)).pack(pady=(20, 8))
-    entry = tk.Entry(root, width=40, font=("Segoe UI", 12), relief="flat", bg="#2a2a4e", fg="#fff", insertbackground="#fff")
-    entry.pack(pady=(0, 20), ipady=8, ipadx=8)
-    entry.bind("<Return>", lambda e: on_activate())
-    btn = tk.Button(root, text=t("license_activate"), command=on_activate, width=18,
-                   bg="#00ff88", fg="#000", font=("Segoe UI", 11, "bold"), relief="flat", cursor="hand2",
-                   activebackground="#00cc6a", activeforeground="#000")
-    btn.pack(pady=(0, 20))
-    entry.focus()
-    root.mainloop()
-    return result[0] is True
+        def on_activate():
+            key = entry.get().strip()
+            if not key:
+                messagebox.showwarning("", t("license_enter"))
+                return
+            hwid = get_hwid()
+            valid, err = verify_license(key, hwid)
+            if valid:
+                save_license(key)
+                result[0] = True
+                root.destroy()
+            else:
+                msg = t("license_invalid") if err == "invalid" else (t("license_bound") if err == "key_bound" else t("license_network"))
+                messagebox.showerror("", msg)
+
+        tk.Label(root, text=t("license_enter"), fg="#00ffe8", bg="#1a1a2e", font=("Segoe UI", 12)).pack(pady=(20, 8))
+        entry = tk.Entry(root, width=40, font=("Segoe UI", 12), relief="flat", bg="#2a2a4e", fg="#fff", insertbackground="#fff")
+        entry.pack(pady=(0, 20), ipady=8, ipadx=8)
+        entry.bind("<Return>", lambda e: on_activate())
+        tk.Button(root, text=t("license_activate"), command=on_activate, width=18, bg="#00ff88", fg="#000",
+                 font=("Segoe UI", 11, "bold"), relief="flat", cursor="hand2").pack(pady=(0, 20))
+        entry.focus()
+        root.mainloop()
+        if result[0] is not True:
+            return False
+        return True
+
+    # Mac path: key получен из osascript, проверяем (без tkinter — чисто osascript)
+    hwid = get_hwid()
+    valid, err = verify_license(key, hwid)
+    if valid:
+        save_license(key)
+        return True
+    msg = t("license_invalid") if err == "invalid" else (t("license_bound") if err == "key_bound" else t("license_network"))
+    msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+    subprocess.run(["osascript", "-e", f'display alert "Лицензия" message "{msg_esc}" as critical'], check=False)
+    return False
 
 
 def create_app():
