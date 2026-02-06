@@ -621,7 +621,7 @@ def _check_license_sync():
     return False
 
 
-def _show_license_dialog():
+def _show_license_dialog(attempt=0):
     """Диалог ввода ключа. На Mac — нативный osascript (tk/CTk там глючат с кликами)."""
     if not _license_check_enabled():
         return True
@@ -697,15 +697,22 @@ def _show_license_dialog():
             return False
         return True
 
-    # Mac path: key получен из osascript, проверяем (без tkinter — чисто osascript)
+    # Mac path: key получен, проверяем
     hwid = get_hwid()
     valid, err = verify_license(key, hwid)
     if valid:
         save_license(key)
         return True
     msg = t("license_invalid") if err == "invalid" else (t("license_bound") if err == "key_bound" else t("license_network"))
-    msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
-    subprocess.run(["osascript", "-e", f'display alert "Лицензия" message "{msg_esc}" as critical'], check=False)
+    if sys.platform == "darwin":
+        msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        subprocess.run(["/usr/bin/osascript", "-e", f'display alert "License" message "{msg_esc}" as critical'], check=False)
+    else:
+        from tkinter import messagebox
+        messagebox.showerror("", msg)
+    # При ошибке сети — дать ещё одну попытку (сервер мог «проснуться»)
+    if err == "network" and attempt < 1:
+        return _show_license_dialog(attempt + 1)
     return False
 
 
