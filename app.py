@@ -231,21 +231,65 @@ def run_script(script_name: str, args: list, log_widget, root, proc_holder=None,
     run_script_subprocess_cmd(cmd, log_widget, root, proc_holder=proc_holder, on_done=on_done, on_error=on_error, progress_path=progress_path, on_finish=on_finish)
 
 
-def _ask_string_osascript(prompt, title="", hidden=False):
-    """Нативный диалог macOS через osascript — работает надёжно в .app."""
-    prompt_esc = prompt.replace("\\", "\\\\").replace('"', '\\"')
-    title_esc = (title or "Telegram").replace("\\", "\\\\").replace('"', '\\"')
-    hidden_part = " with hidden answer" if hidden else ""
-    script = f'text returned of (display dialog "{prompt_esc}" default answer "" with title "{title_esc}" buttons {{"OK", "Cancel"}} default button 1{hidden_part})'
+def _ask_string_inline(root, queue, prompt, secret=False):
+    """Встроенный диалог CTkToplevel — всё внутри приложения, без внешних окон."""
     try:
-        r = subprocess.run(
-            ["/usr/bin/osascript", "-e", script],
-            capture_output=True, text=True, timeout=300,
-            env=dict(os.environ, PATH="/usr/bin:/bin:/usr/sbin:/sbin"),
-        )
-        return (r.stdout or "").strip() if r.returncode == 0 else ""
+        import customtkinter as ctk
+        result = [""]
+        top = ctk.CTkToplevel(root)
+        top.title("Telegram")
+        top.geometry("440x160")
+        top.transient(root)
+        top.grab_set()
+        top.configure(fg_color="#100816")
+        top.lift()
+        top.focus_force()
+        ctk.CTkLabel(top, text=prompt, font=ctk.CTkFont(size=14),
+                     text_color="#00ffe8").pack(pady=(24, 10), padx=24, anchor="w")
+        entry = ctk.CTkEntry(top, width=380, height=44, show="•" if secret else "",
+                             fg_color="#0c0812", font=ctk.CTkFont(size=14))
+        entry.pack(pady=(0, 20), padx=24)
+        entry.focus()
+
+        def on_ok():
+            result[0] = entry.get().strip()
+            top.destroy()
+
+        def on_cancel():
+            result[0] = ""
+            top.destroy()
+
+        btn_frame = ctk.CTkFrame(top, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=24, pady=(0, 20))
+        ctk.CTkButton(btn_frame, text="OK", command=on_ok, width=110, height=38,
+                      fg_color="#00ff88", text_color="#000").pack(side="right", padx=(10, 0))
+        ctk.CTkButton(btn_frame, text="Cancel", command=on_cancel, width=110, height=38).pack(side="right")
+        entry.bind("<Return>", lambda e: on_ok())
+        top.after(100, entry.focus)
+        top.wait_window()
+        queue.append(result[0])
     except Exception:
-        return ""
+        queue.append("")
+
+
+def _show_message_inline(root, msg, is_error=False):
+    """Показать уведомление/ошибку внутри приложения (CTkToplevel)."""
+    try:
+        import customtkinter as ctk
+        top = ctk.CTkToplevel(root)
+        top.title("Error" if is_error else "OK")
+        top.geometry("420x120")
+        top.transient(root)
+        top.grab_set()
+        top.configure(fg_color="#100816")
+        top.lift()
+        color = "#ff4466" if is_error else "#00ff88"
+        ctk.CTkLabel(top, text=msg, font=ctk.CTkFont(size=13),
+                     text_color=color, wraplength=360).pack(pady=24, padx=24, fill="x")
+        ctk.CTkButton(top, text="OK", command=top.destroy, width=100, height=36,
+                      fg_color=color, text_color="#000").pack(pady=(0, 24))
+    except Exception:
+        pass
 
 
 def _run_auth_gui(root, log_widget):
@@ -264,8 +308,7 @@ def _run_auth_gui(root, log_widget):
     def _notify_success(msg):
         try:
             if sys.platform == "darwin":
-                msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"')
-                subprocess.run(["/usr/bin/osascript", "-e", f'display alert "OK" message "{msg_esc}"'], check=False)
+                root.after(0, lambda: _show_message_inline(root, msg, is_error=False))
             else:
                 from tkinter import messagebox
                 root.after(0, lambda: messagebox.showinfo("", msg))
@@ -275,8 +318,7 @@ def _run_auth_gui(root, log_widget):
     def _notify_error(msg):
         try:
             if sys.platform == "darwin":
-                msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"')
-                subprocess.run(["/usr/bin/osascript", "-e", f'display alert "Error" message "{msg_esc}" as critical'], check=False)
+                root.after(0, lambda: _show_message_inline(root, msg, is_error=True))
             else:
                 from tkinter import messagebox
                 root.after(0, lambda: messagebox.showerror("", msg))
@@ -285,25 +327,14 @@ def _run_auth_gui(root, log_widget):
 
     code_queue = []
     pwd_queue = []
-    is_mac = sys.platform == "darwin"
 
     def _ask_code_tk():
-        try:
-            from tkinter import simpledialog
-            msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
-            val = simpledialog.askstring("", msg, parent=root)
-            code_queue.append(val if val is not None else "")
-        except Exception:
-            code_queue.append("")
+        msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
+        _ask_string_inline(root, code_queue, msg, secret=False)
 
     def _ask_password_tk():
-        try:
-            from tkinter import simpledialog
-            msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
-            val = simpledialog.askstring("", msg, parent=root, show="•")
-            pwd_queue.append(val if val is not None else "")
-        except Exception:
-            pwd_queue.append("")
+        msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
+        _ask_string_inline(root, pwd_queue, msg, secret=True)
 
     async def _auth_task():
         os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
@@ -317,9 +348,6 @@ def _run_auth_gui(root, log_widget):
         client = TelegramClient(session_path, int(api_id), api_hash)
 
         def code_callback():
-            if is_mac:
-                msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
-                return _ask_string_osascript(msg, "Telegram", hidden=False)
             code_queue.clear()
             root.after(0, _ask_code_tk)
             import time
@@ -328,9 +356,6 @@ def _run_auth_gui(root, log_widget):
             return code_queue[0]
 
         def password_callback():
-            if is_mac:
-                msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
-                return _ask_string_osascript(msg, "Telegram", hidden=True)
             pwd_queue.clear()
             root.after(0, _ask_password_tk)
             import time
@@ -361,14 +386,13 @@ def _run_auth_gui(root, log_widget):
 
 
 def _show_auth_error(root, is_ru, kind):
-    """Показать ошибку валидации (API/phone). На Mac — osascript, иначе messagebox."""
+    """Показать ошибку валидации (API/phone). На Mac — встроенное окно, иначе messagebox."""
     if kind == "api":
         msg = "Заполните API ID и API Hash в настройках." if is_ru else "Fill API ID and API Hash in settings."
     else:
         msg = "Введите номер телефона в настройках." if is_ru else "Enter phone number in settings."
     if sys.platform == "darwin":
-        msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"')
-        subprocess.run(["/usr/bin/osascript", "-e", f'display alert "Error" message "{msg_esc}" as critical'], check=False)
+        _show_message_inline(root, msg, is_error=True)
     else:
         try:
             from tkinter import messagebox
@@ -1234,11 +1258,10 @@ class CtkApp(ctk.CTk):
         cfg["lang"] = self.lang
         save_config(cfg)
         if not silent:
-            from tkinter import messagebox
             if sys.platform == "darwin":
-                msg = self._t("saved").replace("\\", "\\\\").replace('"', '\\"')
-                subprocess.run(["/usr/bin/osascript", "-e", f'display alert "OK" message "{msg}"'], check=False)
+                _show_message_inline(self, self._t("saved"), is_error=False)
             else:
+                from tkinter import messagebox
                 messagebox.showinfo("", self._t("saved"))
 
     def do_install(self):
