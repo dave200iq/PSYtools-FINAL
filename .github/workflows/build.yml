@@ -24,8 +24,8 @@ jobs:
           python -m PyInstaller --onedir --windowed -n Psylocyba_Tools \
             --add-data "scripts:scripts" \
             --hidden-import telethon --hidden-import customtkinter \
-            --hidden-import PIL --hidden-import rsa \
-            --collect-all customtkinter --noconfirm app.py
+            --hidden-import PIL --hidden-import rsa --hidden-import certifi \
+            --collect-all customtkinter --collect-all certifi --noconfirm app.py
 
       - name: ZIP Mac
         run: |

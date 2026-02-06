@@ -12,6 +12,7 @@ import hashlib
 import platform
 import uuid
 from pathlib import Path
+import ssl
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 from urllib.parse import quote
@@ -60,6 +61,15 @@ def clear_license():
         pass
 
 
+def _make_ssl_context():
+    """SSL-контекст с certifi для Mac и других платформ."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
 def verify_license(key, hwid):
     """Проверка ключа на сервере. Возвращает (True, None) или (False, error_message)."""
     if not key or not hwid:
@@ -67,10 +77,11 @@ def verify_license(key, hwid):
     key = key.strip().upper().replace(" ", "-")
     url = f"{LICENSE_SERVER_URL.rstrip('/')}/verify?key={quote(key)}&hwid={quote(hwid)}"
     import time
+    ctx = _make_ssl_context()
     for attempt in range(3):
         try:
             req = Request(url, headers={"User-Agent": "PsylocybaTools/1.0"})
-            with urlopen(req, timeout=90) as r:
+            with urlopen(req, timeout=90, context=ctx) as r:
                 data = json.loads(r.read().decode())
                 if data.get("valid"):
                     return True, None
