@@ -601,6 +601,9 @@ except ImportError:
 
 
 def _license_check_enabled():
+    # На Mac лицензию не проверяем
+    if sys.platform == "darwin":
+        return False
     url = (LICENSE_SERVER_URL or "").strip().lower()
     return url and url not in ("", "skip", "0", "false")
 
