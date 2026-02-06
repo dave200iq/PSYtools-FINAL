@@ -351,8 +351,9 @@ def _run_auth_gui(root, log_widget):
             await client.disconnect()
 
     def run():
-        log_widget.delete("1.0", "end")
-        log_widget.insert("end", "Authorization...\n")
+        root.after(0, lambda: (log_widget.delete("1.0", "end"), log_widget.insert("end", "Authorization...\n")))
+        import time
+        time.sleep(0.3)  # дать GUI обновиться
         asyncio.run(_auth_task())
         root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
 
@@ -970,7 +971,7 @@ class CtkApp(ctk.CTk):
                           text_color="#000", command=self.do_install).pack(side="left", padx=(0, 12))
         ctk.CTkButton(btn_row, text=t("auth"), width=120, height=38, corner_radius=12,
                       font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
-                      command=lambda: (self.save_settings(), run_auth(self, self.log))).pack(side="left")
+                      command=lambda: (self.save_settings(silent=True), run_auth(self, self.log))).pack(side="left")
 
         self.tabview = ctk.CTkTabview(
             self, fg_color=self.bg_card, corner_radius=18,
@@ -1225,15 +1226,20 @@ class CtkApp(ctk.CTk):
                       command=top.destroy).pack(pady=(14, 0))
         top.after(50, lambda: animate_fade_in(top))
 
-    def save_settings(self):
+    def save_settings(self, silent=False):
         cfg = load_config()
         cfg["api_id"] = self.entry_api_id.get().strip()
         cfg["api_hash"] = self.entry_api_hash.get().strip()
         cfg["phone"] = self.entry_phone.get().strip()
         cfg["lang"] = self.lang
         save_config(cfg)
-        from tkinter import messagebox
-        messagebox.showinfo("", self._t("saved"))
+        if not silent:
+            from tkinter import messagebox
+            if sys.platform == "darwin":
+                msg = self._t("saved").replace("\\", "\\\\").replace('"', '\\"')
+                subprocess.run(["/usr/bin/osascript", "-e", f'display alert "OK" message "{msg}"'], check=False)
+            else:
+                messagebox.showinfo("", self._t("saved"))
 
     def do_install(self):
         self.log.delete("1.0", "end")
