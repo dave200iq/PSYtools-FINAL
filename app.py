@@ -231,6 +231,23 @@ def run_script(script_name: str, args: list, log_widget, root, proc_holder=None,
     run_script_subprocess_cmd(cmd, log_widget, root, proc_holder=proc_holder, on_done=on_done, on_error=on_error, progress_path=progress_path, on_finish=on_finish)
 
 
+def _ask_string_osascript(prompt, title="", hidden=False):
+    """Нативный диалог macOS через osascript — работает надёжно в .app."""
+    prompt_esc = prompt.replace("\\", "\\\\").replace('"', '\\"')
+    title_esc = (title or "Telegram").replace("\\", "\\\\").replace('"', '\\"')
+    hidden_part = " with hidden answer" if hidden else ""
+    script = f'text returned of (display dialog "{prompt_esc}" default answer "" with title "{title_esc}" buttons {{"OK", "Cancel"}} default button 1{hidden_part})'
+    try:
+        r = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True, text=True, timeout=300,
+            env=dict(os.environ, PATH="/usr/bin:/bin:/usr/sbin:/sbin"),
+        )
+        return (r.stdout or "").strip() if r.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
 def _run_auth_gui(root, log_widget):
     """Авторизация в основном окне с GUI-диалогом (без sys.stdin)."""
     cfg = load_config()
@@ -238,38 +255,39 @@ def _run_auth_gui(root, log_widget):
     api_hash = cfg.get("api_hash", "").strip()
     phone = cfg.get("phone", "").strip()
     if not api_id or not api_hash:
-        try:
-            from tkinter import messagebox
-            messagebox.showerror("", "Заполните API ID и API Hash в настройках." if cfg.get("lang") == "ru" else "Fill API ID and API Hash in settings.")
-        except Exception:
-            pass
+        _show_auth_error(root, cfg.get("lang") == "ru", "api")
         return
     if not phone:
-        try:
-            from tkinter import messagebox
-            messagebox.showerror("", "Введите номер телефона в настройках." if cfg.get("lang") == "ru" else "Enter phone number in settings.")
-        except Exception:
-            pass
+        _show_auth_error(root, cfg.get("lang") == "ru", "phone")
         return
 
     def _notify_success(msg):
         try:
-            from tkinter import messagebox
-            root.after(0, lambda: messagebox.showinfo("", msg))
+            if sys.platform == "darwin":
+                msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"')
+                subprocess.run(["/usr/bin/osascript", "-e", f'display alert "OK" message "{msg_esc}"'], check=False)
+            else:
+                from tkinter import messagebox
+                root.after(0, lambda: messagebox.showinfo("", msg))
         except Exception:
             pass
 
     def _notify_error(msg):
         try:
-            from tkinter import messagebox
-            root.after(0, lambda: messagebox.showerror("", msg))
+            if sys.platform == "darwin":
+                msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"')
+                subprocess.run(["/usr/bin/osascript", "-e", f'display alert "Error" message "{msg_esc}" as critical'], check=False)
+            else:
+                from tkinter import messagebox
+                root.after(0, lambda: messagebox.showerror("", msg))
         except Exception:
             pass
 
     code_queue = []
     pwd_queue = []
+    is_mac = sys.platform == "darwin"
 
-    def _ask_code():
+    def _ask_code_tk():
         try:
             from tkinter import simpledialog
             msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
@@ -278,7 +296,7 @@ def _run_auth_gui(root, log_widget):
         except Exception:
             code_queue.append("")
 
-    def _ask_password():
+    def _ask_password_tk():
         try:
             from tkinter import simpledialog
             msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
@@ -299,18 +317,24 @@ def _run_auth_gui(root, log_widget):
         client = TelegramClient(session_path, int(api_id), api_hash)
 
         def code_callback():
+            if is_mac:
+                msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
+                return _ask_string_osascript(msg, "Telegram", hidden=False)
             code_queue.clear()
-            root.after(0, _ask_code)
+            root.after(0, _ask_code_tk)
+            import time
             while not code_queue:
-                import time
                 time.sleep(0.1)
             return code_queue[0]
 
         def password_callback():
+            if is_mac:
+                msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
+                return _ask_string_osascript(msg, "Telegram", hidden=True)
             pwd_queue.clear()
-            root.after(0, _ask_password)
+            root.after(0, _ask_password_tk)
+            import time
             while not pwd_queue:
-                import time
                 time.sleep(0.1)
             return pwd_queue[0]
 
@@ -333,6 +357,23 @@ def _run_auth_gui(root, log_widget):
         root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
 
     threading.Thread(target=run, daemon=True).start()
+
+
+def _show_auth_error(root, is_ru, kind):
+    """Показать ошибку валидации (API/phone). На Mac — osascript, иначе messagebox."""
+    if kind == "api":
+        msg = "Заполните API ID и API Hash в настройках." if is_ru else "Fill API ID and API Hash in settings."
+    else:
+        msg = "Введите номер телефона в настройках." if is_ru else "Enter phone number in settings."
+    if sys.platform == "darwin":
+        msg_esc = msg.replace("\\", "\\\\").replace('"', '\\"')
+        subprocess.run(["/usr/bin/osascript", "-e", f'display alert "Error" message "{msg_esc}" as critical'], check=False)
+    else:
+        try:
+            from tkinter import messagebox
+            messagebox.showerror("", msg)
+        except Exception:
+            pass
 
 
 def run_auth(root, log_widget=None):

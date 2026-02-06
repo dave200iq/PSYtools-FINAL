@@ -2,6 +2,27 @@
   PSYLOCYBA TOOLS — заманчивый пост о функционале
 ═══════════════════════════════════════════════════════════════
 
+📱 ВАРИАНТ 0 — английский (EN)
+───────────────────────────────────────────────────────────────
+
+🚀 PSYLOCYBA TOOLS — Telegram workflow toolkit
+
+Features:
+📋 Clone groups — Full backup: posts, forum topics, avatar, description. Create a backup or relaunch a community in a few clicks.
+📺 Clone channels — Copy all content, media, and structure into a new channel.
+👥 Export subscribers — Get a member list in the format you need: ID, name, @username. CSV, plain text, or usernames only. Optional bot filter.
+✉️ Mass mailing — Send private messages to all members of a channel or group with a configurable delay between messages.
+📊 Statistics — Chat type, member count, online count, admins, average views per post, and activity per week.
+
+✨ Runs on Mac and Windows. Simple interface with hints. Russian and English supported.
+
+⚠️ Requires API ID and API Hash from my.telegram.org — the app cannot work without them.
+
+👉 Download: [link to releases]
+
+
+═══════════════════════════════════════════════════════════════
+
 📱 ВАРИАНТ 1 — короткий (для Telegram/соцсетей)
 ───────────────────────────────────────────────────────────────
 
