@@ -622,21 +622,20 @@ def _check_license_sync():
 
 
 def _show_license_dialog():
-    """Диалог ввода ключа. Возвращает True если активация успешна. Не показывается если проверка отключена."""
+    """Диалог ввода ключа. Стандартный tkinter — стабильно на Mac (CTk-кнопка там глючит)."""
     if not _license_check_enabled():
         return True
-    import customtkinter as _ctk
+    import tkinter as tk
     from tkinter import messagebox
     cfg = load_config()
     lang = cfg.get("lang", "ru")
     t = lambda k: LANG.get(lang, LANG["en"]).get(k, k)
 
-    root = _ctk.CTk()
+    root = tk.Tk()
     root.title(t("license_title"))
-    root.geometry("420x200")
+    root.geometry("420x180")
     root.resizable(False, False)
-    _ctk.set_appearance_mode("dark")
-    root.configure(fg_color="#080510")
+    root.configure(bg="#1a1a2e")
 
     result = [None]
 
@@ -660,18 +659,15 @@ def _show_license_dialog():
                 msg = t("license_network")
             messagebox.showerror("", msg)
 
-    frame = _ctk.CTkFrame(root, fg_color="#100816", corner_radius=12)
-    frame.pack(fill="both", expand=True, padx=20, pady=20)
-    _ctk.CTkLabel(frame, text=t("license_enter"), font=_ctk.CTkFont(size=13)).pack(anchor="w", padx=20, pady=(20, 8))
-    entry = _ctk.CTkEntry(frame, width=360, height=40, placeholder_text="XXXX-XXXX-XXXX-XXXX")
-    entry.pack(padx=20, pady=(0, 20))
-    btn = _ctk.CTkButton(frame, text=t("license_activate"), width=140, height=36, command=on_activate,
-                         fg_color="#00ff88", text_color="#000", cursor="hand2")
-    btn.pack(pady=(0, 20))
+    tk.Label(root, text=t("license_enter"), fg="#00ffe8", bg="#1a1a2e", font=("Segoe UI", 12)).pack(pady=(20, 8))
+    entry = tk.Entry(root, width=40, font=("Segoe UI", 12), relief="flat", bg="#2a2a4e", fg="#fff", insertbackground="#fff")
+    entry.pack(pady=(0, 20), ipady=8, ipadx=8)
     entry.bind("<Return>", lambda e: on_activate())
+    btn = tk.Button(root, text=t("license_activate"), command=on_activate, width=18,
+                   bg="#00ff88", fg="#000", font=("Segoe UI", 11, "bold"), relief="flat", cursor="hand2",
+                   activebackground="#00cc6a", activeforeground="#000")
+    btn.pack(pady=(0, 20))
     entry.focus()
-    root.after(100, lambda: entry.focus_force())
-
     root.mainloop()
     return result[0] is True
 
