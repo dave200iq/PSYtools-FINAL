@@ -314,6 +314,14 @@ def _run_auth_gui(root, log_widget):
         _show_auth_error(root, cfg.get("lang") == "ru", "phone")
         return
 
+    # Отладка: проверить, что обработчик кнопки вообще сработал
+    try:
+        log_widget.delete("1.0", "end")
+        log_widget.insert("end", "[DEBUG] Auth button clicked, starting...\n")
+        log_widget.update_idletasks()
+    except Exception:
+        pass
+
     def _notify_success(msg):
         try:
             if sys.platform == "darwin":
@@ -346,6 +354,7 @@ def _run_auth_gui(root, log_widget):
         _ask_string_inline(root, pwd_queue, msg, secret=True)
 
     async def _auth_task():
+        root.after(0, lambda: log_widget.insert("end", "[DEBUG] _auth_task started\n"))
         os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
         if sys.platform == "darwin":
             try:
@@ -401,13 +410,19 @@ def _run_auth_gui(root, log_widget):
 
     def run():
         import time
-        root.after(0, lambda: (log_widget.delete("1.0", "end"), log_widget.insert("end", "Authorization...\n")))
-        time.sleep(0.3)  # дать GUI обновиться
         try:
+            root.after(0, lambda: log_widget.insert("end", "[DEBUG] Thread started\n"))
+            time.sleep(0.1)
+            root.after(0, lambda: log_widget.insert("end", "Authorization...\n"))
+            time.sleep(0.3)  # дать GUI обновиться
             if sys.platform == "darwin":
                 # На Mac явный event loop в потоке избегает проблем с asyncio
+                root.after(0, lambda: log_widget.insert("end", "[DEBUG] Creating event loop on darwin\n"))
+                time.sleep(0.1)
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                root.after(0, lambda: log_widget.insert("end", "[DEBUG] Running auth task\n"))
+                time.sleep(0.1)
                 try:
                     loop.run_until_complete(_auth_task())
                 finally:
@@ -416,8 +431,10 @@ def _run_auth_gui(root, log_widget):
                 asyncio.run(_auth_task())
             root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
         except Exception as e:
+            import traceback
             err_msg = str(e)
-            root.after(0, lambda: log_widget.insert("end", f"Error: {err_msg}\n"))
+            tb = traceback.format_exc()
+            root.after(0, lambda: log_widget.insert("end", f"[DEBUG] Exception in thread:\n{tb}\n"))
             _notify_error(
                 f"{'Ошибка авторизации' if cfg.get('lang') == 'ru' else 'Authorization failed'}: {err_msg}"
             )
