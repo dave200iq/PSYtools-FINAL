@@ -20,8 +20,8 @@ def get_invite_hash(link: str):
 async def run_export(source: str, output_file: str, fmt: str = "simple", include_bots: bool = False):
     api_id, api_hash = get_api_credentials()
     if not api_id or not api_hash:
-        print("Error: fill API ID and API Hash in settings.")
-        return
+        print("Error: fill API ID and API Hash in settings.", file=sys.stderr)
+        raise ValueError("API credentials not configured")
     client = TelegramClient(SESSION_PATH, api_id, api_hash)
     try:
         await client.start()
@@ -31,7 +31,7 @@ async def run_export(source: str, output_file: str, fmt: str = "simple", include
             phone = input("Phone (e.g. +79001234567): ").strip()
         await client.start(phone=phone if phone else None)
     print("Authorization OK!")
-    entity = source
+    entity = None
     invite_hash = get_invite_hash(source)
     if invite_hash:
         print("Joining via invite link...")
@@ -45,31 +45,48 @@ async def run_export(source: str, output_file: str, fmt: str = "simple", include
                 entity = updates
         except Exception as e:
             if "already" in str(e).lower() or "participant" in str(e).lower():
+                print("Already a member, getting entity...")
                 entity = await client.get_entity(source)
             else:
                 raise
+    if entity is None:
+        print("Getting entity...")
+        entity = await client.get_entity(source)
     print("Getting members...")
     write_progress("export", 0, 0)
     members = []
     n = 0
-    async for user in client.iter_participants(entity, aggressive=True):
-        if user.deleted or (user.bot and not include_bots):
-            continue
-        n += 1
-        write_progress("export", n, 0)
-        name = (user.first_name or "") + (" " + (user.last_name or "") if user.last_name else "")
-        username = user.username or ""
-        if fmt == "csv":
-            members.append(f"{user.id};{name};{username}")
-        elif fmt == "username":
-            if username:
-                members.append(f"@{username}")
-        else:
-            members.append(f"{user.id} | {name}{' @' + username if username else ''}")
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(members))
-    print(f"\nDone! Saved {len(members)} members to {output_file}")
-    await client.disconnect()
+    try:
+        async for user in client.iter_participants(entity, aggressive=True):
+            if user.deleted or (user.bot and not include_bots):
+                continue
+            n += 1
+            write_progress("export", n, 0)
+            name = (user.first_name or "") + (" " + (user.last_name or "") if user.last_name else "")
+            username = user.username or ""
+            if fmt == "csv":
+                members.append(f"{user.id};{name};{username}")
+            elif fmt == "username":
+                if username:
+                    members.append(f"@{username}")
+            else:
+                members.append(f"{user.id} | {name}{' @' + username if username else ''}")
+    except Exception as e:
+        print(f"Error getting members: {e}", file=sys.stderr)
+        raise
+    try:
+        output_path = os.path.abspath(output_file)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(members))
+        print(f"\nDone! Saved {len(members)} members to {output_file}")
+    except Exception as e:
+        print(f"Error writing file: {e}", file=sys.stderr)
+        raise
+    finally:
+        await client.disconnect()
 
 
 if __name__ == "__main__":
@@ -79,4 +96,10 @@ if __name__ == "__main__":
     parser.add_argument("--format", choices=["simple", "csv", "username"], default="simple")
     parser.add_argument("--include-bots", action="store_true")
     args = parser.parse_args()
-    asyncio.run(run_export(args.source, args.output, args.format, args.include_bots))
+    try:
+        asyncio.run(run_export(args.source, args.output, args.format, args.include_bots))
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)

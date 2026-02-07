@@ -29,10 +29,25 @@ def get_app_dir():
     return Path(__file__).resolve().parent
 
 APP_DIR = get_app_dir()
-CONFIG_PATH = APP_DIR / "config.json"
-LICENSE_PATH = APP_DIR / ".license"
-USER_DATA_DIR = APP_DIR
 SCRIPTS_DIR = APP_DIR / "scripts"
+
+# На Mac в .app нельзя писать файлы — конфиг, лицензия и результаты в папку пользователя
+if sys.platform == "darwin" and getattr(sys, "frozen", False):
+    try:
+        _user_data = Path.home() / "Library" / "Application Support" / "Psylocyba_Tools"
+        _user_data.mkdir(parents=True, exist_ok=True)
+        # Проверяем, что реально можно записать
+        _test_file = _user_data / ".write_test"
+        _test_file.write_text("ok", encoding="utf-8")
+        _test_file.unlink()
+        USER_DATA_DIR = _user_data
+    except Exception:
+        USER_DATA_DIR = Path.home() / "Desktop"
+else:
+    USER_DATA_DIR = APP_DIR
+
+CONFIG_PATH = USER_DATA_DIR / "config.json"
+LICENSE_PATH = USER_DATA_DIR / ".license"
 
 # На macOS без этого SSL-подключение (в т.ч. Telethon) может молча падать
 if sys.platform == "darwin":
@@ -183,7 +198,7 @@ def run_script_in_process(script_name: str, args: list, log_widget, root, on_don
     threading.Thread(target=run, daemon=True).start()
 
 
-PROGRESS_FILE = APP_DIR / ".progress"
+PROGRESS_FILE = USER_DATA_DIR / ".progress"
 
 def run_script_subprocess_cmd(cmd: list, log_widget, root, proc_holder=None, on_done=None, on_error=None, progress_path=None, on_finish=None):
     log_widget.delete("1.0", "end")
@@ -1146,7 +1161,7 @@ class CtkApp(ctk.CTk):
         ctk.CTkLabel(out_row, text=t("file_save"), font=self._font_sub, text_color=self.text).pack(side="left", padx=(0, 12))
         self.entry_export_output = mk_entry(out_row, 280)
         self.entry_export_output.pack(side="left", padx=(0, 12))
-        self.entry_export_output.insert(0, str(APP_DIR / "members.txt"))
+        self.entry_export_output.insert(0, str(USER_DATA_DIR / "members.txt"))
         ctk.CTkButton(out_row, text=t("browse"), width=100, height=40, corner_radius=10,
                       font=self._font_btn, fg_color=self.cyan, hover_color="#00c4e6", text_color="#000",
                       command=self.browse_output).pack(side="left")
@@ -1499,9 +1514,19 @@ def _run_script_mode():
             asyncio.run(m(src, tit))
         elif name == "telegram_export_members.py":
             from telegram_export_members import run_export
-            src = args[args.index("--source") + 1] if "--source" in args else ""
-            out = args[args.index("--output") + 1] if "--output" in args else "members.txt"
-            fmt = args[args.index("--format") + 1] if "--format" in args else "simple"
+            def get_arg(key, default=""):
+                try:
+                    idx = args.index(key)
+                    if idx + 1 < len(args):
+                        return args[idx + 1]
+                except (ValueError, IndexError):
+                    pass
+                return default
+            src = get_arg("--source", "")
+            if not src:
+                raise ValueError("--source argument is required")
+            out = get_arg("--output", "members.txt")
+            fmt = get_arg("--format", "simple")
             incl = "--include-bots" in args
             asyncio.run(run_export(src, out, fmt, incl))
         elif name == "telegram_mass_send.py":
