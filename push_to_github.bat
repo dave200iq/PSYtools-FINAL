@@ -50,11 +50,12 @@ echo.
 echo 7. Connecting to GitHub...
 git remote remove origin 2>nul
 if "%GH_TOKEN%"=="" (
-    git remote add origin %REPO_URL%
+    git remote add origin "%REPO_URL%"
 ) else (
     rem Insert token into URL only for this push, then reset to clean URL
-    set TOKEN_URL=%REPO_URL:https://=https://%GH_TOKEN%@%
-    git remote add origin %TOKEN_URL%
+    rem GitHub PAT should be used as password; username can be x-access-token
+    set TOKEN_URL=%REPO_URL:https://=https://x-access-token:%GH_TOKEN%@%
+    git remote add origin "%TOKEN_URL%"
 )
 echo.
 
@@ -69,7 +70,7 @@ if errorlevel 1 (
     echo Try: git push -u origin main
 ) else (
     if not "%GH_TOKEN%"=="" (
-        git remote set-url origin %REPO_URL%
+        git remote set-url origin "%REPO_URL%"
     )
     set GH_TOKEN=
     set TOKEN_URL=
