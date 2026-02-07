@@ -646,6 +646,7 @@ def _run_qr_auth_gui(root, log_widget):
 
         try:
             from telethon import TelegramClient
+            from telethon.errors import SessionPasswordNeededError
         except ImportError:
             root.after(0, lambda: log_widget.insert("end", "Error: install telethon.\n"))
             _notify_error("Установите telethon." if cfg.get("lang") == "ru" else "Install telethon.")
@@ -682,6 +683,32 @@ def _run_qr_auth_gui(root, log_widget):
                 done, _ = await asyncio.wait({wait_task}, timeout=0.5)
                 if done:
                     break
+
+            # Получаем результат ожидания (может кинуть исключение, например при 2FA)
+            try:
+                await wait_task
+            except SessionPasswordNeededError:
+                # Аккаунт с 2FA: нужен пароль после QR
+                pwd_queue = []
+                root.after(0, lambda: _set_status("Нужен пароль 2FA..." if cfg.get("lang") == "ru" else "2FA password required...", "#ffd34d"))
+
+                def _ask_pwd():
+                    msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
+                    _ask_string_inline(root, pwd_queue, msg, secret=True)
+
+                root.after(0, _ask_pwd)
+                import time
+                while not pwd_queue and not cancel_state["cancel"]:
+                    time.sleep(0.1)
+                if cancel_state["cancel"]:
+                    return
+                pwd = (pwd_queue[0] or "").strip()
+                if not pwd:
+                    raise Exception("2FA password was not provided")
+                await client.sign_in(password=pwd)
+            except Exception as e:
+                root.after(0, lambda: log_widget.insert("end", f"QR wait error: {e}\n"))
+                raise
 
             # If wait_task finished, Telethon should be authorized now
             if await client.is_user_authorized():
