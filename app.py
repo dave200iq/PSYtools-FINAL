@@ -172,20 +172,33 @@ def run_script_in_process(script_name: str, args: list, log_widget, root, on_don
     log_widget.insert("end", f"Run: {script_name}\n\n")
 
     def run():
-        os.environ["TELEGRAM_APP_DIR"] = str(USER_DATA_DIR)
+        os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
         sys.path.insert(0, str(scripts_path))
         old_stdout = sys.stdout
+
+        def _run_async(coro):
+            """Mac: явный event loop; Windows: стандартный asyncio.run."""
+            if sys.platform == "darwin":
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(coro)
+                finally:
+                    loop.close()
+            else:
+                asyncio.run(coro)
+
         try:
             sys.stdout = LogWriter(log_widget, root)
             if script_name == "telegram_export_members.py":
                 from telegram_export_members import run_export
-                asyncio.run(run_export(args[1], args[3]))
+                _run_async(run_export(args[1], args[3]))
             elif script_name == "telegram_clone_group.py":
                 from telegram_clone_group import main as clone_main
-                asyncio.run(clone_main(args[1], args[3]))
+                _run_async(clone_main(args[1], args[3]))
             elif script_name == "telegram_clone_channel.py":
                 from telegram_clone_channel import main as clone_main
-                asyncio.run(clone_main(args[1], args[3]))
+                _run_async(clone_main(args[1], args[3]))
             if on_done:
                 root.after(0, on_done)
         except Exception as e:
@@ -198,7 +211,7 @@ def run_script_in_process(script_name: str, args: list, log_widget, root, on_don
     threading.Thread(target=run, daemon=True).start()
 
 
-PROGRESS_FILE = USER_DATA_DIR / ".progress"
+PROGRESS_FILE = APP_DIR / ".progress"
 
 def run_script_subprocess_cmd(cmd: list, log_widget, root, proc_holder=None, on_done=None, on_error=None, progress_path=None, on_finish=None):
     log_widget.delete("1.0", "end")
@@ -208,12 +221,12 @@ def run_script_subprocess_cmd(cmd: list, log_widget, root, proc_holder=None, on_
         proc = None
         collected = []
         try:
-            env = {**os.environ, "TELEGRAM_APP_DIR": str(USER_DATA_DIR), "PYTHONIOENCODING": "utf-8"}
+            env = {**os.environ, "TELEGRAM_APP_DIR": str(APP_DIR), "PYTHONIOENCODING": "utf-8"}
             if progress_path:
                 env["PSY_PROGRESS_FILE"] = str(progress_path)
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=str(USER_DATA_DIR), text=True, encoding="utf-8", errors="replace", env=env,
+                cwd=str(APP_DIR), text=True, encoding="utf-8", errors="replace", env=env,
             )
             if proc_holder is not None:
                 proc_holder.append(proc)
@@ -335,6 +348,8 @@ def _run_auth_gui(root, log_widget):
     api_id = cfg.get("api_id", "").strip()
     api_hash = cfg.get("api_hash", "").strip()
     phone = cfg.get("phone", "").strip()
+    is_mac = sys.platform == "darwin"
+
     if not api_id or not api_hash:
         _show_auth_error(root, cfg.get("lang") == "ru", "api")
         return
@@ -342,17 +357,9 @@ def _run_auth_gui(root, log_widget):
         _show_auth_error(root, cfg.get("lang") == "ru", "phone")
         return
 
-    # Отладка: проверить, что обработчик кнопки вообще сработал
-    try:
-        log_widget.delete("1.0", "end")
-        log_widget.insert("end", "[DEBUG] Auth button clicked, starting...\n")
-        log_widget.update_idletasks()
-    except Exception:
-        pass
-
     def _notify_success(msg):
         try:
-            if sys.platform == "darwin":
+            if is_mac:
                 root.after(0, lambda: _show_message_inline(root, msg, is_error=False))
             else:
                 from tkinter import messagebox
@@ -362,7 +369,7 @@ def _run_auth_gui(root, log_widget):
 
     def _notify_error(msg):
         try:
-            if sys.platform == "darwin":
+            if is_mac:
                 root.after(0, lambda: _show_message_inline(root, msg, is_error=True))
             else:
                 from tkinter import messagebox
@@ -373,54 +380,69 @@ def _run_auth_gui(root, log_widget):
     code_queue = []
     pwd_queue = []
 
-    def _ask_code_tk():
-        msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
-        _ask_string_inline(root, code_queue, msg, secret=False)
+    if is_mac:
+        # Mac: используем встроенный CTk-диалог (simpledialog глючит на Mac)
+        def _ask_code():
+            msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
+            _ask_string_inline(root, code_queue, msg, secret=False)
 
-    def _ask_password_tk():
-        msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
-        _ask_string_inline(root, pwd_queue, msg, secret=True)
+        def _ask_password():
+            msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
+            _ask_string_inline(root, pwd_queue, msg, secret=True)
+    else:
+        # Windows: стандартный simpledialog (работает стабильно)
+        def _ask_code():
+            try:
+                from tkinter import simpledialog
+                msg = "Код из Telegram:" if cfg.get("lang") == "ru" else "Code from Telegram:"
+                val = simpledialog.askstring("", msg, parent=root)
+                code_queue.append(val if val is not None else "")
+            except Exception:
+                code_queue.append("")
+
+        def _ask_password():
+            try:
+                from tkinter import simpledialog
+                msg = "Пароль 2FA:" if cfg.get("lang") == "ru" else "2FA password:"
+                val = simpledialog.askstring("", msg, parent=root, show="*")
+                pwd_queue.append(val if val is not None else "")
+            except Exception:
+                pwd_queue.append("")
 
     async def _auth_task():
-        root.after(0, lambda: log_widget.insert("end", "[DEBUG] _auth_task started\n"))
-        os.environ["TELEGRAM_APP_DIR"] = str(USER_DATA_DIR)
-        if sys.platform == "darwin":
+        os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+
+        # Mac: настроить SSL через certifi (на Mac стандартные сертификаты не работают)
+        if is_mac:
             try:
                 import certifi
                 os.environ["SSL_CERT_FILE"] = certifi.where()
                 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
-                # Telethon использует ssl.create_default_context() без cafile — на Mac без certifi падает
-                _orig_ssl = ssl.create_default_context
-                def _ssl_with_certifi(**kwargs):
-                    if "cafile" not in kwargs:
-                        kwargs = dict(kwargs)
-                        kwargs["cafile"] = certifi.where()
-                    return _orig_ssl(**kwargs)
-                ssl.create_default_context = _ssl_with_certifi
             except Exception:
                 pass
+
         try:
             from telethon import TelegramClient
         except ImportError:
             root.after(0, lambda: log_widget.insert("end", "Error: install telethon.\n"))
             _notify_error("Установите telethon." if cfg.get("lang") == "ru" else "Install telethon.")
             return
-        session_path = str(USER_DATA_DIR / "session_export")
+        session_path = str(APP_DIR / "session_export")
         client = TelegramClient(session_path, int(api_id), api_hash)
 
         def code_callback():
             code_queue.clear()
-            root.after(0, _ask_code_tk)
-            import time
+            root.after(0, _ask_code)
             while not code_queue:
+                import time
                 time.sleep(0.1)
             return code_queue[0]
 
         def password_callback():
             pwd_queue.clear()
-            root.after(0, _ask_password_tk)
-            import time
+            root.after(0, _ask_password)
             while not pwd_queue:
+                import time
                 time.sleep(0.1)
             return pwd_queue[0]
 
@@ -437,35 +459,20 @@ def _run_auth_gui(root, log_widget):
             await client.disconnect()
 
     def run():
-        import time
-        try:
-            root.after(0, lambda: log_widget.insert("end", "[DEBUG] Thread started\n"))
-            time.sleep(0.1)
-            root.after(0, lambda: log_widget.insert("end", "Authorization...\n"))
-            time.sleep(0.3)  # дать GUI обновиться
-            if sys.platform == "darwin":
-                # На Mac явный event loop в потоке избегает проблем с asyncio
-                root.after(0, lambda: log_widget.insert("end", "[DEBUG] Creating event loop on darwin\n"))
-                time.sleep(0.1)
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                root.after(0, lambda: log_widget.insert("end", "[DEBUG] Running auth task\n"))
-                time.sleep(0.1)
-                try:
-                    loop.run_until_complete(_auth_task())
-                finally:
-                    loop.close()
-            else:
-                asyncio.run(_auth_task())
-            root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
-        except Exception as e:
-            import traceback
-            err_msg = str(e)
-            tb = traceback.format_exc()
-            root.after(0, lambda: log_widget.insert("end", f"[DEBUG] Exception in thread:\n{tb}\n"))
-            _notify_error(
-                f"{'Ошибка авторизации' if cfg.get('lang') == 'ru' else 'Authorization failed'}: {err_msg}"
-            )
+        log_widget.delete("1.0", "end")
+        log_widget.insert("end", "Authorization...\n")
+        if is_mac:
+            # Mac: явный event loop в потоке (asyncio.run глючит в daemon thread на Mac)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(_auth_task())
+            finally:
+                loop.close()
+        else:
+            # Windows: стандартный asyncio.run (работает стабильно)
+            asyncio.run(_auth_task())
+        root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -1080,7 +1087,10 @@ class CtkApp(ctk.CTk):
                           text_color="#000", command=self.do_install).pack(side="left", padx=(0, 12))
         ctk.CTkButton(btn_row, text=t("auth"), width=120, height=38, corner_radius=12,
                       font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
-                      command=self._on_auth_click).pack(side="left")
+                      command=self._on_auth_click).pack(side="left", padx=(0, 12))
+        ctk.CTkButton(btn_row, text="🔄 Re-auth", width=100, height=38, corner_radius=12,
+                      font=self._font_btn, fg_color="#ff6600", hover_color="#ff8833",
+                      command=self._on_reauth_click).pack(side="left")
 
         self.tabview = ctk.CTkTabview(
             self, fg_color=self.bg_card, corner_radius=18,
@@ -1342,6 +1352,30 @@ class CtkApp(ctk.CTk):
         except Exception:
             pass
         run_auth(self, self.log)
+
+    def _on_reauth_click(self):
+        """Принудительная повторная авторизация - удаляем старую сессию и авторизуемся заново."""
+        from tkinter import messagebox
+        if messagebox.askyesno("Re-authorize", "Delete current session and authorize again?"):
+            try:
+                # Удаляем файлы сессии
+                session_files = [
+                    APP_DIR / "session_export.session",
+                    APP_DIR / "session_export.session-journal"
+                ]
+                for sf in session_files:
+                    if sf.exists():
+                        sf.unlink()
+                self.log.delete("1.0", "end")
+                self.log.insert("end", "Session deleted. Starting fresh authorization...\n")
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not delete session: {e}")
+                return
+            try:
+                self.save_settings(silent=True)
+            except Exception:
+                pass
+            run_auth(self, self.log)
 
     def save_settings(self, silent=False):
         cfg = load_config()

@@ -120,6 +120,7 @@ async def main(source: str, new_title: str):
         if not phone:
             phone = input("Phone (e.g. +79001234567): ").strip()
         await client.start(phone=phone if phone else None)
+    
     print("\n1. Getting source group...")
     source_entity = await get_source_entity(client, source)
     if not is_group(source_entity):
