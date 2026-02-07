@@ -199,17 +199,19 @@ def run_script_subprocess_cmd(cmd: list, log_widget, root, proc_holder=None, on_
 
     def run():
         proc = None
+        collected = []
         try:
-            env = {**os.environ, "TELEGRAM_APP_DIR": str(APP_DIR), "PYTHONIOENCODING": "utf-8"}
+            env = {**os.environ, "TELEGRAM_APP_DIR": str(USER_DATA_DIR), "PYTHONIOENCODING": "utf-8"}
             if progress_path:
                 env["PSY_PROGRESS_FILE"] = str(progress_path)
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=str(APP_DIR), text=True, encoding="utf-8", errors="replace", env=env,
+                cwd=str(USER_DATA_DIR), text=True, encoding="utf-8", errors="replace", env=env,
             )
             if proc_holder is not None:
                 proc_holder.append(proc)
             for line in proc.stdout:
+                collected.append(line)
                 def _add(l=line):
                     log_widget.insert("end", l)
                     log_widget.see("end")
@@ -218,7 +220,17 @@ def run_script_subprocess_cmd(cmd: list, log_widget, root, proc_holder=None, on_
             if proc.returncode == 0 and on_done:
                 root.after(0, on_done)
             elif proc.returncode != 0 and proc.returncode is not None and on_error:
-                root.after(0, lambda: on_error(f"Exit code {proc.returncode}"))
+                err_detail = None
+                for s in reversed(collected):
+                    s = (s or "").strip()
+                    if s.startswith("Error:") or s.startswith("Error "):
+                        err_detail = s
+                        break
+                if not err_detail and collected:
+                    err_detail = (collected[-1] or "").strip() or f"Exit code {proc.returncode}"
+                else:
+                    err_detail = err_detail or f"Exit code {proc.returncode}"
+                root.after(0, lambda: on_error(err_detail))
             root.after(0, lambda: log_widget.insert("end", "\n\nDone.\n"))
         except Exception as e:
             root.after(0, lambda: log_widget.insert("end", f"\nError: {e}\n"))

@@ -83,11 +83,13 @@ jobs:
           mv Psylocyba_Tools-Windows/*.zip . 2>/dev/null || true
           ls -la *.zip
 
-      - uses: softprops/action-gh-release@v2
+      # Фиксированная версия v2.4.2 — в v2.5.0 бывают "Too many retries"
+      # Тег с run_number чтобы при повторном запуске не падало "tag already exists"
+      - uses: softprops/action-gh-release@v2.4.2
         with:
           repository: ${{ vars.RELEASES_REPO || github.repository }}
           token: ${{ secrets.RELEASES_REPO_TOKEN || secrets.GITHUB_TOKEN }}
-          tag_name: v${{ github.event.inputs.version }}
+          tag_name: v${{ github.event.inputs.version }}-${{ github.run_number }}
           name: Psylocyba Tools v${{ github.event.inputs.version }}
           body: |
             **Mac:** скачай Psylocyba_Tools-Mac.zip
@@ -95,4 +97,5 @@ jobs:
           files: |
             Psylocyba_Tools-Mac.zip
             Psylocyba_Tools-Windows.zip
+          fail_on_unmatched_files: false
           generate_release_notes: false
