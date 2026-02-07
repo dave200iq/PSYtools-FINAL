@@ -29,17 +29,19 @@ def get_app_dir():
     return Path(__file__).resolve().parent
 
 APP_DIR = get_app_dir()
-# На Mac в .app писать нельзя — конфиг и лицензия в папку пользователя
+# На Mac в .app писать нельзя — конфиг и лицензия в папку пользователя (при любой ошибке откат к APP_DIR, чтобы приложение открылось)
+CONFIG_PATH = APP_DIR / "config.json"
+LICENSE_PATH = APP_DIR / ".license"
+USER_DATA_DIR = APP_DIR
 if sys.platform == "darwin" and getattr(sys, "frozen", False):
-    _user_data = Path.home() / "Library" / "Application Support" / "Psylocyba_Tools"
-    _user_data.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH = _user_data / "config.json"
-    LICENSE_PATH = _user_data / ".license"
-    USER_DATA_DIR = _user_data
-else:
-    CONFIG_PATH = APP_DIR / "config.json"
-    LICENSE_PATH = APP_DIR / ".license"
-    USER_DATA_DIR = APP_DIR
+    try:
+        _user_data = Path.home() / "Library" / "Application Support" / "Psylocyba_Tools"
+        _user_data.mkdir(parents=True, exist_ok=True)
+        CONFIG_PATH = _user_data / "config.json"
+        LICENSE_PATH = _user_data / ".license"
+        USER_DATA_DIR = _user_data
+    except Exception:
+        pass
 SCRIPTS_DIR = APP_DIR / "scripts"
 
 # На macOS без этого SSL-подключение (в т.ч. Telethon) может молча падать
