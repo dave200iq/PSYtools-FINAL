@@ -504,6 +504,231 @@ def run_auth(root, log_widget=None):
             pass
 
 
+def _run_qr_auth_gui(root, log_widget):
+    """QR-авторизация (Link Desktop Device) — обход проблемы «код не приходит»."""
+    cfg = load_config()
+    api_id = cfg.get("api_id", "").strip()
+    api_hash = cfg.get("api_hash", "").strip()
+    phone = cfg.get("phone", "").strip()
+    is_mac = sys.platform == "darwin"
+
+    if not api_id or not api_hash:
+        _show_auth_error(root, cfg.get("lang") == "ru", "api")
+        return
+    if not phone:
+        _show_auth_error(root, cfg.get("lang") == "ru", "phone")
+        return
+
+    def _notify_success(msg):
+        try:
+            if is_mac:
+                root.after(0, lambda: _show_message_inline(root, msg, is_error=False))
+            else:
+                from tkinter import messagebox
+                root.after(0, lambda: messagebox.showinfo("", msg))
+        except Exception:
+            pass
+
+    def _notify_error(msg):
+        try:
+            if is_mac:
+                root.after(0, lambda: _show_message_inline(root, msg, is_error=True))
+            else:
+                from tkinter import messagebox
+                root.after(0, lambda: messagebox.showerror("", msg))
+        except Exception:
+            pass
+
+    try:
+        import customtkinter as ctk
+    except Exception:
+        _notify_error("CustomTkinter missing")
+        return
+
+    cancel_state = {"cancel": False}
+
+    top = ctk.CTkToplevel(root)
+    top.title("QR Auth")
+    top.geometry("420x520")
+    top.transient(root)
+    top.grab_set()
+    top.configure(fg_color="#100816")
+    top.lift()
+    top.focus_force()
+
+    def _close():
+        cancel_state["cancel"] = True
+        try:
+            top.destroy()
+        except Exception:
+            pass
+
+    try:
+        top.protocol("WM_DELETE_WINDOW", _close)
+    except Exception:
+        pass
+
+    title = "QR Авторизация" if cfg.get("lang") == "ru" else "QR Authorization"
+    hint = (
+        "Открой Telegram на телефоне → Настройки → Устройства → Подключить устройство.\n"
+        "Отсканируй QR ниже."
+        if cfg.get("lang") == "ru"
+        else "Open Telegram on phone → Settings → Devices → Link Desktop Device.\nScan the QR below."
+    )
+
+    ctk.CTkLabel(top, text=title, font=ctk.CTkFont(size=18, weight="bold"),
+                 text_color="#00ffe8").pack(pady=(18, 8))
+    ctk.CTkLabel(top, text=hint, font=ctk.CTkFont(size=12),
+                 text_color="#c8c8e8", justify="left", wraplength=380).pack(pady=(0, 14), padx=18)
+
+    # Для надёжности рисуем QR через стандартный tkinter.Label + ImageTk
+    import tkinter as tk
+    qr_img_label = tk.Label(top, bg="#100816", bd=0, highlightthickness=0)
+    qr_img_label.pack(pady=(0, 14))
+
+    status_lbl = ctk.CTkLabel(top, text=("Генерирую QR..." if cfg.get("lang") == "ru" else "Generating QR..."),
+                              font=ctk.CTkFont(size=12), text_color="#00ff88")
+    status_lbl.pack(pady=(0, 8))
+
+    btn_row = ctk.CTkFrame(top, fg_color="transparent")
+    btn_row.pack(fill="x", padx=18, pady=(6, 18))
+    ctk.CTkButton(btn_row, text=("Отмена" if cfg.get("lang") == "ru" else "Cancel"),
+                  width=120, height=38, corner_radius=12,
+                  fg_color="#ff4466", hover_color="#ff6680",
+                  command=_close).pack(side="right")
+
+    def _set_status(text, color="#00ff88"):
+        try:
+            status_lbl.configure(text=text, text_color=color)
+        except Exception:
+            pass
+
+    def _render_qr(url: str):
+        """Render QR code into the CTk window."""
+        try:
+            import qrcode
+            from PIL import Image
+            from PIL import ImageTk
+            qr = qrcode.QRCode(border=2)
+            qr.add_data(url)
+            qr.make(fit=True)
+            img_obj = qr.make_image(fill_color="black", back_color="white")
+            # qrcode может вернуть PilImage (обёртка). Разворачиваем в обычный PIL.Image.
+            if hasattr(img_obj, "get_image"):
+                img = img_obj.get_image()
+            else:
+                img = img_obj
+            if not isinstance(img, Image.Image):
+                raise TypeError(f"Unexpected QR image type: {type(img)!r}")
+            img = img.convert("RGB").resize((320, 320))
+            photo = ImageTk.PhotoImage(img)
+            qr_img_label.configure(image=photo)
+            qr_img_label._qr_img_ref = photo  # keep reference
+            _set_status("Сканируй QR в Telegram..." if cfg.get("lang") == "ru" else "Scan QR in Telegram...")
+        except Exception as e:
+            _set_status(f"QR error: {e}", "#ff4466")
+            try:
+                log_widget.insert("end", f"QR render error: {e}\n")
+            except Exception:
+                pass
+
+    async def _qr_auth_task():
+        os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+
+        # Mac SSL fix (certifi)
+        if is_mac:
+            try:
+                import certifi
+                os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+                os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+            except Exception:
+                pass
+
+        try:
+            from telethon import TelegramClient
+        except ImportError:
+            root.after(0, lambda: log_widget.insert("end", "Error: install telethon.\n"))
+            _notify_error("Установите telethon." if cfg.get("lang") == "ru" else "Install telethon.")
+            return
+
+        session_path = str(APP_DIR / "session_export")
+        client = TelegramClient(session_path, int(api_id), api_hash)
+        try:
+            root.after(0, lambda: log_widget.insert("end", "QR Auth: Connecting...\n"))
+            await client.connect()
+
+            if await client.is_user_authorized():
+                root.after(0, lambda: log_widget.insert("end", "Already authorized.\n"))
+                _notify_success("Уже авторизован!" if cfg.get("lang") == "ru" else "Already authorized!")
+                root.after(0, _close)
+                return
+
+            qr_login = await client.qr_login()
+            root.after(0, lambda: _render_qr(qr_login.url))
+
+            wait_task = asyncio.create_task(qr_login.wait())
+            while True:
+                if cancel_state["cancel"]:
+                    try:
+                        wait_task.cancel()
+                    except Exception:
+                        pass
+                    try:
+                        qr_login.cancel()
+                    except Exception:
+                        pass
+                    root.after(0, lambda: log_widget.insert("end", "QR Auth cancelled.\n"))
+                    return
+                done, _ = await asyncio.wait({wait_task}, timeout=0.5)
+                if done:
+                    break
+
+            # If wait_task finished, Telethon should be authorized now
+            if await client.is_user_authorized():
+                root.after(0, lambda: log_widget.insert("end", "QR Authorization successful!\n"))
+                _notify_success("Успешная QR-авторизация!" if cfg.get("lang") == "ru" else "QR authorization successful!")
+                root.after(0, lambda: _set_status("Готово!" if cfg.get("lang") == "ru" else "Done!", "#00ff88"))
+                root.after(0, _close)
+            else:
+                root.after(0, lambda: log_widget.insert("end", "QR Authorization did not complete.\n"))
+                _notify_error("Не удалось авторизоваться по QR." if cfg.get("lang") == "ru" else "QR auth failed.")
+        except Exception as e:
+            root.after(0, lambda: log_widget.insert("end", f"Error: {e}\n"))
+            _notify_error(f"{'Ошибка' if cfg.get('lang') == 'ru' else 'Error'}: {e}")
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+    def run():
+        log_widget.delete("1.0", "end")
+        log_widget.insert("end", "QR Authorization...\n")
+        if is_mac:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(_qr_auth_task())
+            finally:
+                loop.close()
+        else:
+            asyncio.run(_qr_auth_task())
+        root.after(0, lambda: log_widget.insert("end", "\nDone.\n"))
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def run_qr_auth(root, log_widget=None):
+    if log_widget is not None:
+        _run_qr_auth_gui(root, log_widget)
+    else:
+        try:
+            from tkinter import messagebox
+            messagebox.showinfo("", "Fill API settings and try again.")
+        except Exception:
+            pass
+
+
 def animate_fade_in(window, steps=25, delay=12):
     """Плавное появление окна."""
     def step(n=0):
@@ -1088,6 +1313,9 @@ class CtkApp(ctk.CTk):
         ctk.CTkButton(btn_row, text=t("auth"), width=120, height=38, corner_radius=12,
                       font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
                       command=self._on_auth_click).pack(side="left", padx=(0, 12))
+        ctk.CTkButton(btn_row, text="📷 QR Auth", width=110, height=38, corner_radius=12,
+                      font=self._font_btn, fg_color="#2d7dff", hover_color="#4b95ff",
+                      command=self._on_qr_auth_click).pack(side="left", padx=(0, 12))
         ctk.CTkButton(btn_row, text="🔄 Re-auth", width=100, height=38, corner_radius=12,
                       font=self._font_btn, fg_color="#ff6600", hover_color="#ff8833",
                       command=self._on_reauth_click).pack(side="left")
@@ -1352,6 +1580,14 @@ class CtkApp(ctk.CTk):
         except Exception:
             pass
         run_auth(self, self.log)
+
+    def _on_qr_auth_click(self):
+        """QR-авторизация (через сканирование QR в Telegram)."""
+        try:
+            self.save_settings(silent=True)
+        except Exception:
+            pass
+        run_qr_auth(self, self.log)
 
     def _on_reauth_click(self):
         """Принудительная повторная авторизация - удаляем старую сессию и авторизуемся заново."""

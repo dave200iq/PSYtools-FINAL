@@ -14,7 +14,7 @@ a = Analysis(
     pathex=[SPEC_DIR],
     binaries=[],
     datas=[(scripts_src, 'scripts')],
-    hiddenimports=['telethon', 'customtkinter', 'PIL', 'rsa'],
+    hiddenimports=['telethon', 'customtkinter', 'PIL', 'rsa', 'certifi', 'qrcode'],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     cipher=block_cipher, noarchive=False,
 )
