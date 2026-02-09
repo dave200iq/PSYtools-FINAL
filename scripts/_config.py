@@ -6,7 +6,8 @@ from pathlib import Path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = Path(os.environ.get("TELEGRAM_APP_DIR", os.path.dirname(SCRIPT_DIR)))
 CONFIG_PATH = str(APP_DIR / "config.json")
-SESSION_PATH = str(APP_DIR / "session_export")
+SESSION_NAME = os.environ.get("TELEGRAM_SESSION_NAME", "session_export").strip() or "session_export"
+SESSION_PATH = str(APP_DIR / SESSION_NAME)
 
 
 def load_config():

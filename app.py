@@ -411,6 +411,7 @@ def _run_auth_gui(root, log_widget):
 
     async def _auth_task():
         os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+        os.environ["TELEGRAM_SESSION_NAME"] = (cfg.get("session_name") or "session_export").strip() or "session_export"
 
         # Mac: настроить SSL через certifi (на Mac стандартные сертификаты не работают)
         if is_mac:
@@ -427,7 +428,8 @@ def _run_auth_gui(root, log_widget):
             root.after(0, lambda: log_widget.insert("end", "Error: install telethon.\n"))
             _notify_error("Установите telethon." if cfg.get("lang") == "ru" else "Install telethon.")
             return
-        session_path = str(APP_DIR / "session_export")
+        session_name = (cfg.get("session_name") or "session_export").strip() or "session_export"
+        session_path = str(USER_DATA_DIR / session_name)
         client = TelegramClient(session_path, int(api_id), api_hash)
 
         def code_callback():
@@ -634,6 +636,7 @@ def _run_qr_auth_gui(root, log_widget):
 
     async def _qr_auth_task():
         os.environ["TELEGRAM_APP_DIR"] = str(APP_DIR)
+        os.environ["TELEGRAM_SESSION_NAME"] = (cfg.get("session_name") or "session_export").strip() or "session_export"
 
         # Mac SSL fix (certifi)
         if is_mac:
@@ -652,7 +655,8 @@ def _run_qr_auth_gui(root, log_widget):
             _notify_error("Установите telethon." if cfg.get("lang") == "ru" else "Install telethon.")
             return
 
-        session_path = str(APP_DIR / "session_export")
+        session_name = (cfg.get("session_name") or "session_export").strip() or "session_export"
+        session_path = str(USER_DATA_DIR / session_name)
         client = TelegramClient(session_path, int(api_id), api_hash)
         try:
             root.after(0, lambda: log_widget.insert("end", "QR Auth: Connecting...\n"))
@@ -1621,16 +1625,31 @@ class CtkApp(ctk.CTk):
         from tkinter import messagebox
         if messagebox.askyesno("Re-authorize", "Delete current session and authorize again?"):
             try:
-                # Удаляем файлы сессии
-                session_files = [
-                    APP_DIR / "session_export.session",
-                    APP_DIR / "session_export.session-journal"
-                ]
-                for sf in session_files:
-                    if sf.exists():
-                        sf.unlink()
+                session_name = (load_config().get("session_name") or "session_export").strip() or "session_export"
+                # Удаляем файлы сессии в обоих местах (совместимость со старыми версиями)
+                candidates = []
+                for base in {APP_DIR, USER_DATA_DIR}:
+                    stem = base / session_name
+                    candidates.extend([
+                        Path(str(stem) + ".session"),
+                        Path(str(stem) + ".session-journal"),
+                    ])
+                # Также чистим старый фиксированный stem (на случай старых билдов)
+                legacy_stem = APP_DIR / "session_export"
+                candidates.extend([
+                    Path(str(legacy_stem) + ".session"),
+                    Path(str(legacy_stem) + ".session-journal"),
+                ])
+                deleted = 0
+                for sf in candidates:
+                    try:
+                        if sf.exists():
+                            sf.unlink()
+                            deleted += 1
+                    except Exception:
+                        pass
                 self.log.delete("1.0", "end")
-                self.log.insert("end", "Session deleted. Starting fresh authorization...\n")
+                self.log.insert("end", f"Session deleted ({deleted} files). Starting fresh authorization...\n")
             except Exception as e:
                 messagebox.showerror("Error", f"Could not delete session: {e}")
                 return
