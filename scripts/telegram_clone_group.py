@@ -127,6 +127,20 @@ async def main(source: str, new_title: str):
         print("Error: not a group.")
         await client.disconnect()
         return
+
+    # Быстрая проверка доступа к истории
+    try:
+        probe = await client.get_messages(source_entity, limit=1)
+        if not probe:
+            print("\nError: No messages found or no access to history.")
+            print("Tip: you must be a member of the group (or be approved if join request is enabled).")
+            await client.disconnect()
+            return
+    except Exception as e:
+        print(f"\nError: can't read group history: {e}")
+        print("Tip: you must be a member of the group (or be approved if join request is enabled).")
+        await client.disconnect()
+        return
     is_forum = isinstance(source_entity, Channel) and getattr(source_entity, 'forum', False)
     if isinstance(source_entity, Channel):
         full = await client(GetFullChannelRequest(source_entity))
@@ -216,6 +230,11 @@ async def main(source: str, new_title: str):
     total = len(messages)
     write_progress("copy", 0, total)
     print(f"\n6. Copying {total} messages...")
+    if total == 0:
+        print("\nError: 0 messages collected. Nothing to copy.")
+        print("Tip: join the group first or use an invite link. Some groups require admin approval.")
+        await client.disconnect()
+        return
     count = 0
     for i, msg in enumerate(messages, 1):
         try:

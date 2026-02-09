@@ -12,7 +12,7 @@ from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.tl.functions.channels import CreateChannelRequest, EditPhotoRequest, GetFullChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import InputChatUploadedPhoto, MessageService
+from telethon.tl.types import InputChatUploadedPhoto, MessageService, MessageMediaWebPage
 
 
 def get_invite_hash(link: str):
@@ -55,6 +55,20 @@ async def main(source: str, new_title: str):
         print("Error: not a channel.")
         await client.disconnect()
         return
+
+    # Быстрая проверка доступа к истории
+    try:
+        probe = await client.get_messages(source_entity, limit=1)
+        if not probe:
+            print("\nError: No messages found or no access to history.")
+            print("Tip: you must be a member of the channel (or be approved if join request is enabled).")
+            await client.disconnect()
+            return
+    except Exception as e:
+        print(f"\nError: can't read channel history: {e}")
+        print("Tip: you must be a member of the channel (or be approved if join request is enabled).")
+        await client.disconnect()
+        return
     full = await client(GetFullChannelRequest(source_entity))
     title = new_title or source_entity.title
     about = full.full_chat.about or ""
@@ -82,18 +96,38 @@ async def main(source: str, new_title: str):
         if n % 50 == 0:
             write_progress("collect", n, 0)
     total = len(messages)
+    print(f"   Found messages: {total}")
+    if total == 0:
+        print("\nError: 0 messages collected. Nothing to copy.")
+        print("Tip: join the channel first or use an invite link. Some channels require admin approval.")
+        await client.disconnect()
+        return
     write_progress("copy", 0, total)
     for i, msg in enumerate(messages, 1):
         try:
             if isinstance(msg, MessageService):
                 continue
             text = getattr(msg, 'message', None) or getattr(msg, 'text', None) or ""
+            entities = getattr(msg, 'entities', None)
             for attempt in range(5):
                 try:
-                    if msg.media:
-                        await client.send_file(new_channel, msg.media, caption=text or None)
+                    if msg.media and not isinstance(msg.media, MessageMediaWebPage):
+                        await client.send_file(
+                            new_channel,
+                            msg.media,
+                            caption=text or None,
+                            formatting_entities=entities,
+                            parse_mode=None if entities else (),
+                            link_preview=False,
+                        )
                     else:
-                        await client.send_message(new_channel, text or "")
+                        await client.send_message(
+                            new_channel,
+                            text or "",
+                            formatting_entities=entities,
+                            parse_mode=None if entities else (),
+                            link_preview=isinstance(msg.media, MessageMediaWebPage),
+                        )
                     break
                 except FloodWaitError as e:
                     wait = e.seconds + 2
