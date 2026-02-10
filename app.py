@@ -452,6 +452,12 @@ def _run_auth_gui(root, log_widget):
             root.after(0, lambda: log_widget.insert("end", "Connecting...\n"))
             await client.connect()
             await client.start(phone=phone, code_callback=code_callback, password=password_callback)
+            try:
+                me = await client.get_me()
+                who = f"{getattr(me, 'first_name', '')} @{getattr(me, 'username', '') or 'no_username'} id={getattr(me, 'id', '')}"
+                root.after(0, lambda: log_widget.insert("end", f"Logged in as: {who}\n"))
+            except Exception:
+                pass
             root.after(0, lambda: log_widget.insert("end", "Authorization successful!\n"))
             _notify_success("Успешная авторизация!" if cfg.get("lang") == "ru" else "Authorization successful!")
         except Exception as e:
@@ -664,6 +670,12 @@ def _run_qr_auth_gui(root, log_widget):
 
             if await client.is_user_authorized():
                 root.after(0, lambda: log_widget.insert("end", "Already authorized.\n"))
+                try:
+                    me = await client.get_me()
+                    who = f"{getattr(me, 'first_name', '')} @{getattr(me, 'username', '') or 'no_username'} id={getattr(me, 'id', '')}"
+                    root.after(0, lambda: log_widget.insert("end", f"Logged in as: {who}\n"))
+                except Exception:
+                    pass
                 _notify_success("Уже авторизован!" if cfg.get("lang") == "ru" else "Already authorized!")
                 root.after(0, _close)
                 return
@@ -717,6 +729,12 @@ def _run_qr_auth_gui(root, log_widget):
             # If wait_task finished, Telethon should be authorized now
             if await client.is_user_authorized():
                 root.after(0, lambda: log_widget.insert("end", "QR Authorization successful!\n"))
+                try:
+                    me = await client.get_me()
+                    who = f"{getattr(me, 'first_name', '')} @{getattr(me, 'username', '') or 'no_username'} id={getattr(me, 'id', '')}"
+                    root.after(0, lambda: log_widget.insert("end", f"Logged in as: {who}\n"))
+                except Exception:
+                    pass
                 _notify_success("Успешная QR-авторизация!" if cfg.get("lang") == "ru" else "QR authorization successful!")
                 root.after(0, lambda: _set_status("Готово!" if cfg.get("lang") == "ru" else "Done!", "#00ff88"))
                 root.after(0, _close)
@@ -1628,7 +1646,12 @@ class CtkApp(ctk.CTk):
                 session_name = (load_config().get("session_name") or "session_export").strip() or "session_export"
                 # Удаляем файлы сессии в обоих местах (совместимость со старыми версиями)
                 candidates = []
-                for base in {APP_DIR, USER_DATA_DIR}:
+                # На macOS сессии могли лежать в разных местах в разных билдах
+                extra_bases = set()
+                if sys.platform == "darwin":
+                    extra_bases.add(Path.home() / "Desktop")
+                    extra_bases.add(Path.home() / "Library" / "Application Support" / "Psylocyba_Tools")
+                for base in {APP_DIR, USER_DATA_DIR, *extra_bases}:
                     stem = base / session_name
                     # Telethon session is sqlite -> may create extra files (-wal/-shm/-journal)
                     candidates.extend([Path(str(stem) + suf) for suf in (
