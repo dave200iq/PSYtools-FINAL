@@ -871,6 +871,9 @@ LANG = {
         "export_format": "Формат экспорта:",
         "export_include_bots": "Включать ботов",
         "check_log_hint": "Проверьте лог ниже для деталей.",
+        "reset_session": "Сброс сессии",
+        "reset_session_confirm": "Полный сброс: удалить ВСЕ данные сессии (папка приложения, данные пользователя, на Mac — также рабочий стол и Application Support). Никаких следов не останется. Затем потребуется авторизация. Продолжить?",
+        "reset_session_done": "Сессия полностью сброшена (удалено файлов: {n}).",
         "help_clone_group": "КЛОНИРОВАНИЕ ГРУППЫ\n\nКак работает: создаётся новая группа, копируются аватар, описание и все сообщения (включая топики форума).\n\nПрава: достаточно быть участником исходной группы. Админ не нужен.",
         "help_clone_channel": "КЛОНИРОВАНИЕ КАНАЛА\n\nКак работает: создаётся новый канал, копируются аватар, описание и все посты с медиа.\n\nПрава: достаточно быть подписчиком исходного канала. Админ не нужен.",
         "help_export": "ЭКСПОРТ ПОДПИСЧИКОВ\n\nКак работает: собирает список участников канала/группы и сохраняет в файл (ID, имя, @username в выбранном формате). Боты по умолчанию исключаются.\n\nПрава: нужны права администратора в канале или группе.",
@@ -948,6 +951,9 @@ LANG = {
         "export_format": "Export format:",
         "export_include_bots": "Include bots",
         "check_log_hint": "Check the log below for details.",
+        "reset_session": "Reset session",
+        "reset_session_confirm": "Full reset: remove ALL session data from app folder, user data, and on Mac also Desktop and Application Support. No traces left. You will need to authorize again. Continue?",
+        "reset_session_done": "Session fully reset ({n} files deleted).",
         "help_clone_group": "CLONE GROUP\n\nHow it works: creates a new group, copies avatar, description and all messages (including forum topics).\n\nPermissions: you only need to be a member of the source group. Admin not required.",
         "help_clone_channel": "CLONE CHANNEL\n\nHow it works: creates a new channel, copies avatar, description and all posts with media.\n\nPermissions: you only need to be a subscriber of the source channel. Admin not required.",
         "help_export": "EXPORT SUBSCRIBERS\n\nHow it works: collects the list of channel/group members and saves to file (ID, name, @username in selected format). Bots are excluded by default.\n\nPermissions: admin rights required in the channel or group.",
@@ -1367,7 +1373,10 @@ class CtkApp(ctk.CTk):
                       command=self._on_qr_auth_click).pack(side="left", padx=(0, 12))
         ctk.CTkButton(btn_row, text="🔄 Re-auth", width=100, height=38, corner_radius=12,
                       font=self._font_btn, fg_color="#ff6600", hover_color="#ff8833",
-                      command=self._on_reauth_click).pack(side="left")
+                      command=self._on_reauth_click).pack(side="left", padx=(0, 12))
+        ctk.CTkButton(btn_row, text="🗑 " + t("reset_session"), width=120, height=38, corner_radius=12,
+                      font=self._font_btn, fg_color="#8b0000", hover_color="#a52a2a",
+                      command=self._on_reset_session_click).pack(side="left")
 
         self.tabview = ctk.CTkTabview(
             self, fg_color=self.bg_card, corner_radius=18,
@@ -1638,44 +1647,40 @@ class CtkApp(ctk.CTk):
             pass
         run_qr_auth(self, self.log)
 
+    def _wipe_all_session_files(self):
+        """Удаляет все файлы сессии во всех известных местах (Windows + Mac). Возвращает число удалённых файлов."""
+        session_name = (load_config().get("session_name") or "session_export").strip() or "session_export"
+        candidates = []
+        extra_bases = set()
+        if sys.platform == "darwin":
+            extra_bases.add(Path.home() / "Desktop")
+            extra_bases.add(Path.home() / "Library" / "Application Support" / "Psylocyba_Tools")
+        for base in {APP_DIR, USER_DATA_DIR, *extra_bases}:
+            stem = base / session_name
+            candidates.extend([Path(str(stem) + suf) for suf in (
+                ".session", ".session-journal", ".session-wal", ".session-shm",
+            )])
+            # legacy stem в каждой базе
+            legacy = base / "session_export"
+            candidates.extend([Path(str(legacy) + suf) for suf in (
+                ".session", ".session-journal", ".session-wal", ".session-shm",
+            )])
+        deleted = 0
+        for sf in candidates:
+            try:
+                if sf.exists():
+                    sf.unlink()
+                    deleted += 1
+            except Exception:
+                pass
+        return deleted
+
     def _on_reauth_click(self):
         """Принудительная повторная авторизация - удаляем старую сессию и авторизуемся заново."""
         from tkinter import messagebox
         if messagebox.askyesno("Re-authorize", "Delete current session and authorize again?"):
             try:
-                session_name = (load_config().get("session_name") or "session_export").strip() or "session_export"
-                # Удаляем файлы сессии в обоих местах (совместимость со старыми версиями)
-                candidates = []
-                # На macOS сессии могли лежать в разных местах в разных билдах
-                extra_bases = set()
-                if sys.platform == "darwin":
-                    extra_bases.add(Path.home() / "Desktop")
-                    extra_bases.add(Path.home() / "Library" / "Application Support" / "Psylocyba_Tools")
-                for base in {APP_DIR, USER_DATA_DIR, *extra_bases}:
-                    stem = base / session_name
-                    # Telethon session is sqlite -> may create extra files (-wal/-shm/-journal)
-                    candidates.extend([Path(str(stem) + suf) for suf in (
-                        ".session",
-                        ".session-journal",
-                        ".session-wal",
-                        ".session-shm",
-                    )])
-                # Также чистим старый фиксированный stem (на случай старых билдов)
-                legacy_stem = APP_DIR / "session_export"
-                candidates.extend([Path(str(legacy_stem) + suf) for suf in (
-                    ".session",
-                    ".session-journal",
-                    ".session-wal",
-                    ".session-shm",
-                )])
-                deleted = 0
-                for sf in candidates:
-                    try:
-                        if sf.exists():
-                            sf.unlink()
-                            deleted += 1
-                    except Exception:
-                        pass
+                deleted = self._wipe_all_session_files()
                 self.log.delete("1.0", "end")
                 self.log.insert("end", f"Session deleted ({deleted} files). Starting fresh authorization...\n")
             except Exception as e:
@@ -1686,6 +1691,23 @@ class CtkApp(ctk.CTk):
             except Exception:
                 pass
             run_auth(self, self.log)
+
+    def _on_reset_session_click(self):
+        """Полный сброс сессии: только удалить все следы (Win + Mac). Авторизация не запускается."""
+        from tkinter import messagebox
+        if not messagebox.askyesno(self._t("reset_session"), self._t("reset_session_confirm")):
+            return
+        try:
+            deleted = self._wipe_all_session_files()
+            self.log.delete("1.0", "end")
+            self.log.insert("end", self._t("reset_session_done").format(n=deleted) + "\n")
+            try:
+                self.save_settings(silent=True)
+            except Exception:
+                pass
+            messagebox.showinfo(self._t("reset_session"), self._t("reset_session_done").format(n=deleted))
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not reset session: {e}")
 
     def save_settings(self, silent=False):
         cfg = load_config()
