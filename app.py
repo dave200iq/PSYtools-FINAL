@@ -1630,16 +1630,21 @@ class CtkApp(ctk.CTk):
                 candidates = []
                 for base in {APP_DIR, USER_DATA_DIR}:
                     stem = base / session_name
-                    candidates.extend([
-                        Path(str(stem) + ".session"),
-                        Path(str(stem) + ".session-journal"),
-                    ])
+                    # Telethon session is sqlite -> may create extra files (-wal/-shm/-journal)
+                    candidates.extend([Path(str(stem) + suf) for suf in (
+                        ".session",
+                        ".session-journal",
+                        ".session-wal",
+                        ".session-shm",
+                    )])
                 # Также чистим старый фиксированный stem (на случай старых билдов)
                 legacy_stem = APP_DIR / "session_export"
-                candidates.extend([
-                    Path(str(legacy_stem) + ".session"),
-                    Path(str(legacy_stem) + ".session-journal"),
-                ])
+                candidates.extend([Path(str(legacy_stem) + suf) for suf in (
+                    ".session",
+                    ".session-journal",
+                    ".session-wal",
+                    ".session-shm",
+                )])
                 deleted = 0
                 for sf in candidates:
                     try:

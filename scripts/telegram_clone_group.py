@@ -41,6 +41,13 @@ async def get_source_entity(client, source):
             if hasattr(updates, 'chat'):
                 return updates.chat
         except Exception as e:
+            # Frozen / restricted accounts cannot use CheckChatInviteRequest/ImportChatInviteRequest
+            if "frozen" in str(e).lower() or "not available for frozen accounts" in str(e).lower():
+                raise RuntimeError(
+                    "Account is frozen/restricted by Telegram. "
+                    "Invite links (joinchat/+) cannot be checked/joined from this account. "
+                    "Use another account or a public @username link."
+                )
             if "already" in str(e).lower() or "participant" in str(e).lower():
                 pass
     return await client.get_entity(source)
