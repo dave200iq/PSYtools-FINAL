@@ -5,13 +5,17 @@ try:
 except NameError:
     SPEC_DIR = os.getcwd()
 scripts_src = os.path.join(SPEC_DIR, 'scripts')
+assets_src = os.path.join(SPEC_DIR, 'assets')
+datas_list = [(scripts_src, 'scripts')]
+if os.path.isdir(assets_src):
+    datas_list.append((assets_src, 'assets'))
 block_cipher = None
 
 a = Analysis(
     [os.path.join(SPEC_DIR, 'app.py')],
     pathex=[SPEC_DIR],
     binaries=[],
-    datas=[(scripts_src, 'scripts')],
+    datas=datas_list,
     hiddenimports=['telethon', 'customtkinter', 'PIL', 'rsa', 'certifi', 'qrcode'],
     hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
     win_no_prefer_redirects=False, win_private_assemblies=False,

@@ -29,7 +29,40 @@ def get_app_dir():
     return Path(__file__).resolve().parent
 
 APP_DIR = get_app_dir()
+# При сборке в exe ресурсы (шрифты, иконки, флаги) лежат во временной папке PyInstaller
+ASSETS_DIR = Path(sys._MEIPASS) / "assets" if getattr(sys, "frozen", False) else APP_DIR / "assets"
 SCRIPTS_DIR = APP_DIR / "scripts"
+
+
+def _get_font_family():
+    """Загрузить Inter при старте и вернуть имя шрифта для использования во всех окнах."""
+    _fam = "Segoe UI"
+    if sys.platform != "win32":
+        return _fam
+    try:
+        _fonts_dir = ASSETS_DIR / "fonts"
+        _font_files = ("Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf")
+        if not (_fonts_dir / "Inter-Regular.ttf").exists():
+            return _fam
+        import shutil
+        import tempfile
+        import ctypes
+        _temp = Path(tempfile.gettempdir()) / "PsylocybaFonts"
+        _temp.mkdir(exist_ok=True)
+        for _fn in _font_files:
+            _src = _fonts_dir / _fn
+            if _src.exists():
+                shutil.copy2(_src, _temp / _fn)
+        _fr = ctypes.windll.gdi32.AddFontResourceExW
+        for _fn in _font_files:
+            if os.path.exists(str(_temp / _fn)) and _fr(str(_temp / _fn), 0x10, 0):
+                return "Inter"
+    except Exception:
+        pass
+    return _fam
+
+
+FONT_FAMILY = _get_font_family()
 
 # На Mac в .app нельзя писать файлы — конфиг, лицензия и результаты в папку пользователя
 if sys.platform == "darwin" and getattr(sys, "frozen", False):
@@ -294,10 +327,10 @@ def _ask_string_inline(root, queue, prompt, secret=False):
         top.configure(fg_color="#100816")
         top.lift()
         top.focus_force()
-        ctk.CTkLabel(top, text=prompt, font=ctk.CTkFont(size=14),
+        ctk.CTkLabel(top, text=prompt, font=ctk.CTkFont(family=FONT_FAMILY, size=14),
                      text_color="#00ffe8").pack(pady=(24, 10), padx=24, anchor="w")
-        entry = ctk.CTkEntry(top, width=380, height=44, show="•" if secret else "",
-                             fg_color="#0c0812", font=ctk.CTkFont(size=14))
+        entry = ctk.CTkEntry(top, width=380, height=44, corner_radius=0, show="•" if secret else "",
+                             fg_color="#0c0812", font=ctk.CTkFont(family=FONT_FAMILY, size=14))
         entry.pack(pady=(0, 20), padx=24)
         entry.focus()
 
@@ -334,15 +367,16 @@ def _show_message_inline(root, msg, is_error=False):
         top.configure(fg_color="#100816")
         top.lift()
         color = "#ff4466" if is_error else "#00ff88"
-        ctk.CTkLabel(top, text=msg, font=ctk.CTkFont(size=13),
+        ctk.CTkLabel(top, text=msg, font=ctk.CTkFont(family=FONT_FAMILY, size=13),
                      text_color=color, wraplength=360).pack(pady=24, padx=24, fill="x")
         ctk.CTkButton(top, text="OK", command=top.destroy, width=100, height=36,
+                      font=ctk.CTkFont(family=FONT_FAMILY, size=13),
                       fg_color=color, text_color="#000").pack(pady=(0, 24))
     except Exception:
         pass
 
 
-def _run_auth_gui(root, log_widget):
+def _run_auth_gui(root, log_widget, on_success=None):
     """Авторизация в основном окне с GUI-диалогом (без sys.stdin)."""
     cfg = load_config()
     api_id = cfg.get("api_id", "").strip()
@@ -460,6 +494,8 @@ def _run_auth_gui(root, log_widget):
                 pass
             root.after(0, lambda: log_widget.insert("end", "Authorization successful!\n"))
             _notify_success("Успешная авторизация!" if cfg.get("lang") == "ru" else "Authorization successful!")
+            if on_success:
+                root.after(0, on_success)
         except Exception as e:
             root.after(0, lambda: log_widget.insert("end", f"Error: {e}\n"))
             _notify_error(f"{'Ошибка авторизации' if cfg.get('lang') == 'ru' else 'Authorization failed'}: {e}")
@@ -501,9 +537,9 @@ def _show_auth_error(root, is_ru, kind):
             pass
 
 
-def run_auth(root, log_widget=None):
+def run_auth(root, log_widget=None, on_success=None):
     if log_widget is not None:
-        _run_auth_gui(root, log_widget)
+        _run_auth_gui(root, log_widget, on_success=on_success)
     else:
         try:
             from tkinter import messagebox
@@ -512,7 +548,7 @@ def run_auth(root, log_widget=None):
             pass
 
 
-def _run_qr_auth_gui(root, log_widget):
+def _run_qr_auth_gui(root, log_widget, on_success=None):
     """QR-авторизация (Link Desktop Device) — обход проблемы «код не приходит»."""
     cfg = load_config()
     api_id = cfg.get("api_id", "").strip()
@@ -584,9 +620,9 @@ def _run_qr_auth_gui(root, log_widget):
         else "Open Telegram on phone → Settings → Devices → Link Desktop Device.\nScan the QR below."
     )
 
-    ctk.CTkLabel(top, text=title, font=ctk.CTkFont(size=18, weight="bold"),
+    ctk.CTkLabel(top, text=title, font=ctk.CTkFont(family=FONT_FAMILY, size=18, weight="bold"),
                  text_color="#00ffe8").pack(pady=(18, 8))
-    ctk.CTkLabel(top, text=hint, font=ctk.CTkFont(size=12),
+    ctk.CTkLabel(top, text=hint, font=ctk.CTkFont(family=FONT_FAMILY, size=12),
                  text_color="#c8c8e8", justify="left", wraplength=380).pack(pady=(0, 14), padx=18)
 
     # Для надёжности рисуем QR через стандартный tkinter.Label + ImageTk
@@ -595,7 +631,7 @@ def _run_qr_auth_gui(root, log_widget):
     qr_img_label.pack(pady=(0, 14))
 
     status_lbl = ctk.CTkLabel(top, text=("Генерирую QR..." if cfg.get("lang") == "ru" else "Generating QR..."),
-                              font=ctk.CTkFont(size=12), text_color="#00ff88")
+                              font=ctk.CTkFont(family=FONT_FAMILY, size=12), text_color="#00ff88")
     status_lbl.pack(pady=(0, 8))
 
     btn_row = ctk.CTkFrame(top, fg_color="transparent")
@@ -677,6 +713,8 @@ def _run_qr_auth_gui(root, log_widget):
                 except Exception:
                     pass
                 _notify_success("Уже авторизован!" if cfg.get("lang") == "ru" else "Already authorized!")
+                if on_success:
+                    root.after(0, on_success)
                 root.after(0, _close)
                 return
 
@@ -736,6 +774,8 @@ def _run_qr_auth_gui(root, log_widget):
                 except Exception:
                     pass
                 _notify_success("Успешная QR-авторизация!" if cfg.get("lang") == "ru" else "QR authorization successful!")
+                if on_success:
+                    root.after(0, on_success)
                 root.after(0, lambda: _set_status("Готово!" if cfg.get("lang") == "ru" else "Done!", "#00ff88"))
                 root.after(0, _close)
             else:
@@ -767,35 +807,15 @@ def _run_qr_auth_gui(root, log_widget):
     threading.Thread(target=run, daemon=True).start()
 
 
-def run_qr_auth(root, log_widget=None):
+def run_qr_auth(root, log_widget=None, on_success=None):
     if log_widget is not None:
-        _run_qr_auth_gui(root, log_widget)
+        _run_qr_auth_gui(root, log_widget, on_success=on_success)
     else:
         try:
             from tkinter import messagebox
             messagebox.showinfo("", "Fill API settings and try again.")
         except Exception:
             pass
-
-
-def animate_fade_in(window, steps=25, delay=12):
-    """Плавное появление окна."""
-    def step(n=0):
-        if n <= steps:
-            try:
-                # Плавная кривая (ease-out)
-                t = n / steps
-                alpha = 1 - (1 - t) ** 2
-                window.attributes("-alpha", min(1.0, alpha))
-            except Exception:
-                pass
-            if n < steps:
-                window.after(delay, lambda n=n: step(n + 1))
-    try:
-        window.attributes("-alpha", 0.0)
-        window.after(20, lambda: step(0))
-    except Exception:
-        pass
 
 
 # === TRANSLATIONS ===
@@ -874,6 +894,12 @@ LANG = {
         "reset_session": "Сброс сессии",
         "reset_session_confirm": "Полный сброс: удалить ВСЕ данные сессии (папка приложения, данные пользователя, на Mac — также рабочий стол и Application Support). Никаких следов не останется. Затем потребуется авторизация. Продолжить?",
         "reset_session_done": "Сессия полностью сброшена (удалено файлов: {n}).",
+        "logged_in_as": "Вы вошли как",
+        "profile": "Профиль",
+        "user_id": "ID",
+        "phone_number": "Номер",
+        "show_api_settings": "Настройки API",
+        "load_profile": "Показать профиль",
         "help_clone_group": "КЛОНИРОВАНИЕ ГРУППЫ\n\nКак работает: создаётся новая группа, копируются аватар, описание и все сообщения (включая топики форума).\n\nПрава: достаточно быть участником исходной группы. Админ не нужен.",
         "help_clone_channel": "КЛОНИРОВАНИЕ КАНАЛА\n\nКак работает: создаётся новый канал, копируются аватар, описание и все посты с медиа.\n\nПрава: достаточно быть подписчиком исходного канала. Админ не нужен.",
         "help_export": "ЭКСПОРТ ПОДПИСЧИКОВ\n\nКак работает: собирает список участников канала/группы и сохраняет в файл (ID, имя, @username в выбранном формате). Боты по умолчанию исключаются.\n\nПрава: нужны права администратора в канале или группе.",
@@ -954,6 +980,12 @@ LANG = {
         "reset_session": "Reset session",
         "reset_session_confirm": "Full reset: remove ALL session data from app folder, user data, and on Mac also Desktop and Application Support. No traces left. You will need to authorize again. Continue?",
         "reset_session_done": "Session fully reset ({n} files deleted).",
+        "logged_in_as": "Logged in as",
+        "profile": "Profile",
+        "user_id": "ID",
+        "phone_number": "Phone",
+        "show_api_settings": "API settings",
+        "load_profile": "Show profile",
         "help_clone_group": "CLONE GROUP\n\nHow it works: creates a new group, copies avatar, description and all messages (including forum topics).\n\nPermissions: you only need to be a member of the source group. Admin not required.",
         "help_clone_channel": "CLONE CHANNEL\n\nHow it works: creates a new channel, copies avatar, description and all posts with media.\n\nPermissions: you only need to be a subscriber of the source channel. Admin not required.",
         "help_export": "EXPORT SUBSCRIBERS\n\nHow it works: collects the list of channel/group members and saves to file (ID, name, @username in selected format). Bots are excluded by default.\n\nPermissions: admin rights required in the channel or group.",
@@ -963,7 +995,7 @@ LANG = {
 }
 
 API_HELP_RU = """
-═══════════════════ КАК ПОЛУЧИТЬ API ID И API HASH ═══════════════════
+КАК ПОЛУЧИТЬ API ID И API HASH
 
 Шаг 1. Откройте сайт в браузере:
         https://my.telegram.org
@@ -988,8 +1020,6 @@ API_HELP_RU = """
 
 Шаг 7. Скопируйте оба значения и вставьте в поля выше.
 
-═══════════════════════════════════════════════════════════════════════
-
 Если форма не отправляется или показывает ERROR:
 • Попробуйте другой браузер (Chrome, Firefox)
 • Отключите VPN или попробуйте с VPN
@@ -997,7 +1027,7 @@ API_HELP_RU = """
 """
 
 API_HELP_EN = """
-═══════════════ HOW TO GET API ID AND API HASH ═══════════════
+HOW TO GET API ID AND API HASH
 
 Step 1. Open in your browser:
         https://my.telegram.org
@@ -1021,8 +1051,6 @@ Step 6. On the page that opens you will see:
         • api_hash — a long string of letters and numbers
 
 Step 7. Copy both values and paste them into the fields above.
-
-═══════════════════════════════════════════════════════════════
 
 If the form doesn't submit or shows ERROR:
 • Try a different browser (Chrome, Firefox)
@@ -1101,39 +1129,83 @@ def _show_license_dialog(attempt=0):
         if not key:
             return False
     else:
-        # Windows/Linux — tkinter
-        import tkinter as tk
+        # Windows/Linux — окно лицензии в стиле приложения
         from tkinter import messagebox
-        root = tk.Tk()
-        root.title(t("license_title"))
-        root.geometry("420x180")
-        root.resizable(False, False)
-        root.configure(bg="#1a1a2e")
         result = [None]
+        if HAS_CTK:
+            import customtkinter as ctk
+            ctk.set_appearance_mode("dark")
+            root = ctk.CTk()
+            root.title(t("license_title"))
+            root.geometry("440x220")
+            root.resizable(False, False)
+            root.configure(fg_color="#0a0812")
+            root.update_idletasks()
+            frame = ctk.CTkFrame(root, fg_color="transparent")
+            frame.pack(fill="both", expand=True, padx=32, pady=28)
 
-        def on_activate():
-            key = entry.get().strip()
-            if not key:
-                messagebox.showwarning("", t("license_enter"))
-                return
-            hwid = get_hwid()
-            valid, err = verify_license(key, hwid)
-            if valid:
-                save_license(key)
-                result[0] = True
-                root.destroy()
-            else:
-                msg = t("license_invalid") if err == "invalid" else (t("license_bound") if err == "key_bound" else t("license_network"))
-                messagebox.showerror("", msg)
+            ctk.CTkLabel(frame, text=t("license_enter"), font=ctk.CTkFont(family=FONT_FAMILY, size=14),
+                         text_color="#8b8699").pack(anchor="w", pady=(0, 12))
+            entry = ctk.CTkEntry(frame, width=360, height=44, corner_radius=0,
+                                fg_color="#0f0d14", text_color="#f1f0f5", font=ctk.CTkFont(family=FONT_FAMILY, size=14),
+                                border_width=1, border_color="#2d2840")
+            entry.pack(fill="x", pady=(0, 24))
+            entry.bind("<Return>", lambda e: on_activate())
 
-        tk.Label(root, text=t("license_enter"), fg="#00ffe8", bg="#1a1a2e", font=("Segoe UI", 12)).pack(pady=(20, 8))
-        entry = tk.Entry(root, width=40, font=("Segoe UI", 12), relief="flat", bg="#2a2a4e", fg="#fff", insertbackground="#fff")
-        entry.pack(pady=(0, 20), ipady=8, ipadx=8)
-        entry.bind("<Return>", lambda e: on_activate())
-        tk.Button(root, text=t("license_activate"), command=on_activate, width=18, bg="#00ff88", fg="#000",
-                 font=("Segoe UI", 11, "bold"), relief="flat", cursor="hand2").pack(pady=(0, 20))
-        entry.focus()
-        root.mainloop()
+            def on_activate():
+                key = entry.get().strip()
+                if not key:
+                    messagebox.showwarning("", t("license_enter"))
+                    return
+                hwid = get_hwid()
+                valid, err = verify_license(key, hwid)
+                if valid:
+                    save_license(key)
+                    result[0] = True
+                    root.destroy()
+                else:
+                    msg = t("license_invalid") if err == "invalid" else (t("license_bound") if err == "key_bound" else t("license_network"))
+                    messagebox.showerror("", msg)
+
+            btn = ctk.CTkButton(frame, text=t("license_activate"), command=on_activate,
+                                height=44, corner_radius=22, font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
+                                fg_color="#10b981", hover_color="#34d399", text_color="#fff")
+            btn.pack(pady=(0, 8))
+            entry.focus()
+            root.mainloop()
+        else:
+            import tkinter as tk
+            root = tk.Tk()
+            root.title(t("license_title"))
+            root.geometry("420x200")
+            root.resizable(False, False)
+            root.configure(bg="#12101a")
+            tk.Label(root, text=t("license_enter"), fg="#8b8699", bg="#12101a", font=(FONT_FAMILY, 14)).pack(pady=(24, 10))
+            entry = tk.Entry(root, width=42, font=(FONT_FAMILY, 13), relief="flat", bg="#0f0d14", fg="#f1f0f5",
+                             insertbackground="#f1f0f5", highlightthickness=1, highlightbackground="#2d2840")
+            entry.pack(pady=(0, 20), ipady=10, ipadx=12)
+            entry.bind("<Return>", lambda e: on_activate())
+
+            def on_activate():
+                key = entry.get().strip()
+                if not key:
+                    messagebox.showwarning("", t("license_enter"))
+                    return
+                hwid = get_hwid()
+                valid, err = verify_license(key, hwid)
+                if valid:
+                    save_license(key)
+                    result[0] = True
+                    root.destroy()
+                else:
+                    msg = t("license_invalid") if err == "invalid" else (t("license_bound") if err == "key_bound" else t("license_network"))
+                    messagebox.showerror("", msg)
+
+            tk.Button(root, text=t("license_activate"), command=on_activate,
+                      font=(FONT_FAMILY, 13, "bold"), bg="#10b981", fg="#fff", activebackground="#34d399",
+                      activeforeground="#fff", relief="flat", cursor="hand2", padx=24, pady=10).pack(pady=(0, 24))
+            entry.focus()
+            root.mainloop()
         if result[0] is not True:
             return False
         return True
@@ -1172,25 +1244,110 @@ class CtkApp(ctk.CTk):
         self._t = lambda k: LANG.get(self.lang, LANG["en"]).get(k, k)
 
         self.title("Psylocyba Tools")
-        self.geometry("840x800")
-        self.minsize(700, 640)
+        self.geometry("900x820")
+        self.minsize(720, 660)
 
-        self.configure(fg_color="#080510")
-        self.cyan = "#00ffe8"
-        self.magenta = "#ff0099"
-        self.lime = "#00ff88"
-        self.purple = "#a855f7"
-        self.text = "#e8e8f5"
-        self.muted = "#7070a0"
-        self.bg_card = "#100816"
-        self.bg_input = "#0c0812"
-        self.bg_dropdown = "#140a1c"
+        self.bg_main = "#003554"
+        self.configure(fg_color=self.bg_main)
+        self.cyan = "#22d3ee"
+        self.magenta = "#d946ef"
+        self.lime = "#34d399"
+        self.purple = "#a78bfa"
+        self.violet = "#8b5cf6"
+        self.emerald = "#10b981"
+        self.rose = "#f43f5e"
+        self.amber = "#f59e0b"
+        self.sky = "#38bdf8"
+        self.text = "#f1f0f5"
+        self.muted = "#8b8699"
+        self.bg_card = "#004366"
+        self.bg_input = "#002a40"
+        self.bg_dropdown = "#003d5c"
+        self.border_subtle = "#005577"
+        self.radius_pill = 12
+        self.radius_card = 16
 
-        self._font_title = ctk.CTkFont(family="Segoe UI", size=30, weight="bold")
-        self._font_sub = ctk.CTkFont(family="Segoe UI", size=13)
-        self._font_btn = ctk.CTkFont(family="Segoe UI Semibold", size=13)
+        # ---------- Load Inter font: auto-download if missing, then copy to temp (ASCII path) ----------
+        _fonts_dir = ASSETS_DIR / "fonts"
+        _font_files = ("Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf")
+        # В exe ресурсы только для чтения — шрифт должен быть уже в сборке (запусти create_assets.py до build)
+        if not getattr(sys, "frozen", False) and not (_fonts_dir / "Inter-Regular.ttf").exists():
+            try:
+                import zipfile
+                import urllib.request
+                _fonts_dir.mkdir(parents=True, exist_ok=True)
+                _zip_path = _fonts_dir / "Inter.zip"
+                urllib.request.urlretrieve(
+                    "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+                    _zip_path
+                )
+                with zipfile.ZipFile(_zip_path, "r") as _z:
+                    for _name in _z.namelist():
+                        if _name.endswith(".ttf") and "Inter-" in _name and "Display" not in _name:
+                            _base = os.path.basename(_name)
+                            if _base in _font_files:
+                                (_fonts_dir / _base).write_bytes(_z.read(_name))
+                _zip_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        self._inter_loaded = False
+        try:
+            import ctypes
+            import shutil
+            import tempfile
+            _temp_fonts = Path(tempfile.gettempdir()) / "PsylocybaFonts"
+            _temp_fonts.mkdir(exist_ok=True)
+            for _fn in _font_files:
+                _src = _fonts_dir / _fn
+                if _src.exists():
+                    shutil.copy2(_src, _temp_fonts / _fn)
+            _fr = ctypes.windll.gdi32.AddFontResourceExW
+            _loaded = 0
+            for _fn in _font_files:
+                _fp = str(_temp_fonts / _fn)
+                if os.path.exists(_fp):
+                    if _fr(_fp, 0x10, 0):  # FR_PRIVATE = 0x10
+                        _loaded += 1
+            self._inter_loaded = _loaded > 0
+        except Exception:
+            pass
+        _fam = "Inter" if self._inter_loaded else "Segoe UI"
+        _fam_semi = "Inter" if self._inter_loaded else "Segoe UI Semibold"
+        self._font_title = ctk.CTkFont(family=_fam, size=24, weight="bold")
+        self._font_sub = ctk.CTkFont(family=_fam, size=13)
+        self._font_btn = ctk.CTkFont(family=_fam_semi, size=13, weight="bold")
+        self._font_section = ctk.CTkFont(family=_fam_semi, size=15, weight="bold")
+        self._font_small = ctk.CTkFont(family=_fam, size=11)
+
+        # ---------- Preload icons ----------
+        _icons_dir = ASSETS_DIR / "icons"
+        _flags_dir = ASSETS_DIR / "flags"
+        def _load_icon(name, sz=(20, 20)):
+            p = str(_icons_dir / name)
+            if os.path.exists(p):
+                try:
+                    return ctk.CTkImage(light_image=p, dark_image=p, size=sz)
+                except Exception:
+                    pass
+            return None
+        def _load_flag(name, sz=(28, 19)):
+            p = str(_flags_dir / name)
+            if os.path.exists(p):
+                try:
+                    return ctk.CTkImage(light_image=p, dark_image=p, size=sz)
+                except Exception:
+                    pass
+            return None
+        self._icon_key = _load_icon("key.png")
+        self._icon_qr = _load_icon("qr.png")
+        self._icon_refresh = _load_icon("refresh.png")
+        self._icon_trash = _load_icon("trash.png")
+        self._icon_info = _load_icon("info.png", (16, 16))
+        self._flag_ru = _load_flag("ru.png")
+        self._flag_gb = _load_flag("gb.png")
 
         self._run_procs = []
+        self._cached_user = None
         self._build_ui()
         self._fix_ru_keyboard_paste()
 
@@ -1276,117 +1433,189 @@ class CtkApp(ctk.CTk):
                     pass
         self.bind_all("<KeyRelease>", _on_key, "+")
 
+    def _stop_rainbow_title(self):
+        if getattr(self, "_rainbow_after_id", None) is not None:
+            try:
+                self.after_cancel(self._rainbow_after_id)
+            except Exception:
+                pass
+            self._rainbow_after_id = None
+
+    @staticmethod
+    def _hex_to_rgb(h):
+        h = h.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+    @staticmethod
+    def _rgb_to_hex(rgb):
+        return "#{:02x}{:02x}{:02x}".format(int(rgb[0]), int(rgb[1]), int(rgb[2]))
+
+    def _start_rainbow_title(self):
+        base = ["#ff3366", "#ff6633", "#ffcc00", "#33cc66", "#22d3ee", "#3388ff", "#a78bfa", "#ff3366"]
+        steps = 18
+        smooth = []
+        for i in range(len(base) - 1):
+            a, b = self._hex_to_rgb(base[i]), self._hex_to_rgb(base[i + 1])
+            for k in range(steps):
+                t_ = k / steps
+                r = a[0] + (b[0] - a[0]) * t_
+                g = a[1] + (b[1] - a[1]) * t_
+                bl = a[2] + (b[2] - a[2]) * t_
+                smooth.append(self._rgb_to_hex((r, g, bl)))
+        self._rainbow_colors = smooth
+        self._rainbow_idx = 0
+        interval_ms = 45
+
+        def _tick():
+            if not getattr(self, "_title_label", None) or not self._title_label.winfo_exists():
+                self._rainbow_after_id = None
+                return
+            try:
+                self._rainbow_idx = (self._rainbow_idx + 1) % len(self._rainbow_colors)
+                self._title_label.configure(text_color=self._rainbow_colors[self._rainbow_idx])
+            except Exception:
+                pass
+            self._rainbow_after_id = self.after(interval_ms, _tick)
+        self._rainbow_after_id = self.after(interval_ms, _tick)
+
     def _build_ui(self):
         t = self._t
-        header = ctk.CTkFrame(self, fg_color="transparent")
+        self._stop_rainbow_title()
+        _fam = "Inter" if self._inter_loaded else "Segoe UI"
+        try:
+            self.option_add("*Font", (_fam, 13))
+        except Exception:
+            pass
+        main = ctk.CTkFrame(self, fg_color=self.bg_main)
+        main.pack(fill="both", expand=True)
+        header = ctk.CTkFrame(main, fg_color="transparent")
         header.pack(fill="x", padx=28, pady=(28, 16))
 
         title_block = ctk.CTkFrame(header, fg_color="transparent")
         title_block.pack(side="left")
         title_row = ctk.CTkFrame(title_block, fg_color="transparent")
         title_row.pack(anchor="w")
-        ctk.CTkLabel(title_row, text=t("title"), font=self._font_title,
-                     text_color=self.lime).pack(side="left")
+        self._title_label = ctk.CTkLabel(title_row, text=t("title"), font=self._font_title,
+                     text_color=self.lime)
+        self._title_label.pack(side="left")
+        self._rainbow_after_id = None
+        self._start_rainbow_title()
 
-        self.channel_btn = ctk.CTkButton(title_row, text="Channel", width=88, height=34,
-                                         corner_radius=8, font=ctk.CTkFont(family="Segoe UI", size=12),
-                                         fg_color="transparent", hover_color="#180c24",
-                                         border_width=1, border_color=self.cyan,
-                                         text_color=self.cyan,
+        self.channel_btn = ctk.CTkButton(title_row, text="Channel", width=100, height=40,
+                                         corner_radius=10, font=self._font_btn,
+                                         fg_color=self.violet, hover_color=self.purple,
+                                         border_width=1, border_color=self.purple,
+                                         text_color="#fff",
                                          command=lambda: webbrowser.open(TELEGRAM_CHANNEL_URL))
         self.channel_btn.pack(side="left", padx=(18, 0))
 
-        ctk.CTkLabel(title_block, text=t("subtitle"), font=self._font_sub,
-                     text_color=self.muted).pack(anchor="w", pady=(6, 0))
-
+        right_btns = ctk.CTkFrame(header, fg_color="transparent")
+        right_btns.pack(side="right")
+        _rb_h, _rb_r = 40, 10
+        ctk.CTkButton(right_btns, text=t("help_api"), width=140, height=_rb_h, corner_radius=_rb_r,
+                      font=self._font_btn, fg_color=self.bg_dropdown, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle, text_color=self.muted,
+                      command=self._show_api_help).pack(side="right", padx=(8, 0))
         self.lang_btn = ctk.CTkButton(
-            header, text=("RU" if self.lang == "ru" else "EN"),
-            width=52, height=34, corner_radius=8, font=self._font_btn,
-            fg_color=self.bg_card, hover_color="#180c24",
-            border_width=1, border_color=self.cyan,
+            right_btns, text=("RU" if self.lang == "ru" else "EN"),
+            width=56, height=_rb_h, corner_radius=self.radius_pill, font=self._font_btn,
+            fg_color=self.bg_dropdown, hover_color=self.border_subtle,
+            border_width=1, border_color=self.border_subtle, text_color=self.text,
             command=self._show_lang_dialog
         )
         self.lang_btn.pack(side="right")
 
         settings_card = ctk.CTkFrame(
-            self, fg_color=self.bg_card, corner_radius=16,
-            border_width=1, border_color=self.cyan
+            main, fg_color=self.bg_card, corner_radius=self.radius_card,
+            border_width=1, border_color=self.border_subtle
         )
         settings_card.pack(fill="x", padx=28, pady=12)
         settings_inner = ctk.CTkFrame(settings_card, fg_color="transparent")
         settings_inner.pack(fill="x", padx=24, pady=22)
 
-        hdr = ctk.CTkFrame(settings_inner, fg_color="transparent")
+        self._api_frame = ctk.CTkFrame(settings_inner, fg_color="transparent")
+        self._profile_frame = ctk.CTkFrame(settings_inner, fg_color="transparent")
+
+        hdr = ctk.CTkFrame(self._api_frame, fg_color="transparent")
         hdr.pack(fill="x")
-        ctk.CTkLabel(hdr, text=t("api_settings"), font=ctk.CTkFont(family="Segoe UI Semibold", size=17),
+        ctk.CTkLabel(hdr, text=t("api_settings"), font=self._font_section,
                      text_color=self.cyan).pack(side="left")
-        ctk.CTkButton(hdr, text=t("help_api"), width=150, height=34, corner_radius=12,
-                      font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
-                      command=self._show_api_help).pack(side="right")
-        ctk.CTkLabel(settings_inner, text=t("api_hint"), font=self._font_sub,
-                     text_color=self.muted).pack(anchor="w", pady=(4, 0))
 
         cfg = load_config()
-        grid = ctk.CTkFrame(settings_inner, fg_color="transparent")
+        _label_w = 90
+        _entry_w = 340
+        grid = ctk.CTkFrame(self._api_frame, fg_color="transparent")
         grid.pack(fill="x", pady=(14, 0))
-        ctk.CTkLabel(grid, text=t("api_id"), width=100, font=self._font_sub,
-                     text_color=self.text).grid(row=0, column=0, sticky="w", pady=6, padx=(0, 12))
-        self.entry_api_id = ctk.CTkEntry(grid, width=140, height=38, corner_radius=10,
+        grid.columnconfigure(1, minsize=_entry_w)
+        ctk.CTkLabel(grid, text=t("api_id"), width=_label_w, anchor="w", font=self._font_sub,
+                     text_color=self.text).grid(row=0, column=0, sticky="w", pady=6, padx=(0, 14))
+        self.entry_api_id = ctk.CTkEntry(grid, width=_entry_w, height=40, corner_radius=0,
                                          fg_color=self.bg_input, text_color=self.text,
-                                         font=ctk.CTkFont(size=13))
+                                         font=self._font_sub)
         self.entry_api_id.grid(row=0, column=1, sticky="w", pady=6)
         self.entry_api_id.insert(0, cfg.get("api_id", ""))
-        ctk.CTkLabel(grid, text=t("api_hash"), width=100, font=self._font_sub,
-                     text_color=self.text).grid(row=1, column=0, sticky="w", pady=6, padx=(0, 12))
-        self.entry_api_hash = ctk.CTkEntry(grid, width=320, height=38, show="•", corner_radius=10,
-                                           fg_color=self.bg_input, text_color=self.text,
-                                           font=ctk.CTkFont(size=13))
+        ctk.CTkLabel(grid, text=t("api_hash"), width=_label_w, anchor="w", font=self._font_sub,
+                     text_color=self.text).grid(row=1, column=0, sticky="w", pady=6, padx=(0, 14))
+        self.entry_api_hash = ctk.CTkEntry(grid, width=_entry_w, height=40, show="•", corner_radius=0,
+                                          fg_color=self.bg_input, text_color=self.text,
+                                          font=self._font_sub)
         self.entry_api_hash.grid(row=1, column=1, sticky="w", pady=6)
         self.entry_api_hash.insert(0, cfg.get("api_hash", ""))
-        ctk.CTkLabel(grid, text=t("phone"), width=100, font=self._font_sub,
-                     text_color=self.text).grid(row=2, column=0, sticky="w", pady=6, padx=(0, 12))
-        phone_frame = ctk.CTkFrame(grid, fg_color="transparent")
-        phone_frame.grid(row=2, column=1, sticky="w", pady=6)
-        self.entry_phone = ctk.CTkEntry(phone_frame, width=220, height=38, corner_radius=10,
+        ctk.CTkLabel(grid, text=t("phone"), width=_label_w, anchor="w", font=self._font_sub,
+                     text_color=self.text).grid(row=2, column=0, sticky="w", pady=6, padx=(0, 14))
+        phone_row = ctk.CTkFrame(grid, fg_color="transparent")
+        phone_row.grid(row=2, column=1, sticky="w", pady=6)
+        self.entry_phone = ctk.CTkEntry(phone_row, width=_entry_w, height=40, corner_radius=0,
                                         fg_color=self.bg_input, text_color=self.text,
                                         placeholder_text=t("phone_hint"),
-                                        font=ctk.CTkFont(size=13))
+                                        font=self._font_sub)
         self.entry_phone.pack(side="left")
         self.entry_phone.insert(0, cfg.get("phone", ""))
-        ctk.CTkLabel(phone_frame, text="  " + t("phone_hint"), font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(phone_row, text="  " + t("phone_hint"), font=self._font_small,
                      text_color=self.muted).pack(side="left")
 
-        btn_row = ctk.CTkFrame(settings_inner, fg_color="transparent")
+        btn_row = ctk.CTkFrame(self._api_frame, fg_color="transparent")
         btn_row.pack(fill="x", pady=(18, 0))
-        ctk.CTkButton(btn_row, text=t("save"), width=110, height=38, corner_radius=12,
-                      font=self._font_btn, fg_color=self.lime, hover_color="#00cc6a",
-                      text_color="#000", command=self.save_settings).pack(side="left", padx=(0, 12))
+        _bh = 40
         if not getattr(sys, "frozen", False):
-            ctk.CTkButton(btn_row, text=t("install_deps"), width=190, height=38, corner_radius=12,
-                          font=self._font_btn, fg_color=self.cyan, hover_color="#00c4e6",
-                          text_color="#000", command=self.do_install).pack(side="left", padx=(0, 12))
-        ctk.CTkButton(btn_row, text=t("auth"), width=120, height=38, corner_radius=12,
-                      font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
-                      command=self._on_auth_click).pack(side="left", padx=(0, 12))
-        ctk.CTkButton(btn_row, text="📷 QR Auth", width=110, height=38, corner_radius=12,
-                      font=self._font_btn, fg_color="#2d7dff", hover_color="#4b95ff",
-                      command=self._on_qr_auth_click).pack(side="left", padx=(0, 12))
-        ctk.CTkButton(btn_row, text="🔄 Re-auth", width=100, height=38, corner_radius=12,
-                      font=self._font_btn, fg_color="#ff6600", hover_color="#ff8833",
-                      command=self._on_reauth_click).pack(side="left", padx=(0, 12))
-        ctk.CTkButton(btn_row, text="🗑 " + t("reset_session"), width=120, height=38, corner_radius=12,
-                      font=self._font_btn, fg_color="#8b0000", hover_color="#a52a2a",
-                      command=self._on_reset_session_click).pack(side="left")
+            ctk.CTkButton(btn_row, text=t("install_deps"), width=160, height=_bh, corner_radius=12,
+                          font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                          border_width=1, border_color=self.border_subtle,
+                          text_color=self.text, command=self.do_install).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(btn_row, text=t("auth"), width=120, height=_bh, corner_radius=12,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle,
+                      text_color=self.text, command=self._on_auth_click).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text="QR Auth", width=100, height=_bh, corner_radius=12,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle,
+                      text_color=self.text, command=self._on_qr_auth_click).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text="Re-auth", width=100, height=_bh, corner_radius=12,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle,
+                      text_color=self.text, command=self._on_reauth_click).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text=t("reset_session"), width=130, height=_bh, corner_radius=12,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle,
+                      text_color=self.text, command=self._on_reset_session_click).pack(side="left")
+
+        self._api_frame.pack(fill="x")
 
         self.tabview = ctk.CTkTabview(
-            self, fg_color=self.bg_card, corner_radius=18,
-            segmented_button_fg_color=self.bg_dropdown,
-            segmented_button_selected_color="#1a2d35",
+            main, fg_color=self.bg_card, corner_radius=self.radius_card,
+            segmented_button_fg_color=self.bg_input,
+            segmented_button_selected_color=self.violet,
             segmented_button_unselected_color=self.bg_input,
-            segmented_button_unselected_hover_color="#1a1a2e",
-            text_color="#00ffea"
+            segmented_button_unselected_hover_color=self.border_subtle,
+            segmented_button_selected_hover_color=self.purple,
+            text_color=self.text
         )
         self.tabview.pack(fill="both", expand=True, padx=28, pady=10)
+        try:
+            if hasattr(self.tabview, "_segmented_button"):
+                self.tabview._segmented_button.configure(font=self._font_btn)
+        except Exception:
+            pass
         tab_group = self.tabview.add(t("clone_group"))
         tab_channel = self.tabview.add(t("clone_channel"))
         tab_export = self.tabview.add(t("export"))
@@ -1397,8 +1626,8 @@ class CtkApp(ctk.CTk):
             tab.configure(fg_color=self.bg_card)
 
         def mk_entry(parent, w=440):
-            return ctk.CTkEntry(parent, width=w, height=40, corner_radius=10,
-                                fg_color=self.bg_input, text_color=self.text, font=ctk.CTkFont(size=13))
+            return ctk.CTkEntry(parent, width=w, height=40, corner_radius=0,
+                                fg_color=self.bg_input, text_color=self.text, font=self._font_sub)
 
         grp_label_row = ctk.CTkFrame(tab_group, fg_color="transparent")
         grp_label_row.pack(anchor="w")
@@ -1411,11 +1640,12 @@ class CtkApp(ctk.CTk):
         self.entry_group_title.pack(fill="x", pady=(0, 18))
         grp_btn_row = ctk.CTkFrame(tab_group, fg_color="transparent")
         grp_btn_row.pack(anchor="w")
-        ctk.CTkButton(grp_btn_row, text=t("run_clone_group"), width=220, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color=self.lime, hover_color="#00cc6a", text_color="#000",
-                      command=self.run_clone_group).pack(side="left", padx=(0, 10))
-        ctk.CTkButton(grp_btn_row, text=t("stop"), width=100, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color="#cc3333", hover_color="#ff4444", text_color="#fff",
+        ctk.CTkButton(grp_btn_row, text=t("run_clone_group"), width=200, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+                      command=self.run_clone_group).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(grp_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.rose, text_color=self.rose,
                       command=self._do_stop_script).pack(side="left")
 
         ch_label_row = ctk.CTkFrame(tab_channel, fg_color="transparent")
@@ -1429,11 +1659,12 @@ class CtkApp(ctk.CTk):
         self.entry_channel_title.pack(fill="x", pady=(0, 18))
         ch_btn_row = ctk.CTkFrame(tab_channel, fg_color="transparent")
         ch_btn_row.pack(anchor="w")
-        ctk.CTkButton(ch_btn_row, text=t("run_clone_group"), width=220, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color=self.lime, hover_color="#00cc6a", text_color="#000",
-                      command=self.run_clone_channel).pack(side="left", padx=(0, 10))
-        ctk.CTkButton(ch_btn_row, text=t("stop"), width=100, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color="#cc3333", hover_color="#ff4444", text_color="#fff",
+        ctk.CTkButton(ch_btn_row, text=t("run_clone_group"), width=200, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+                      command=self.run_clone_channel).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(ch_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.rose, text_color=self.rose,
                       command=self._do_stop_script).pack(side="left")
 
         exp_label_row = ctk.CTkFrame(tab_export, fg_color="transparent")
@@ -1447,27 +1678,29 @@ class CtkApp(ctk.CTk):
         ctk.CTkLabel(exp_opts, text=t("export_format"), font=self._font_sub, text_color=self.text).pack(side="left", padx=(0, 8))
         self.export_format_var = ctk.StringVar(value="simple")
         self.export_format_menu = ctk.CTkOptionMenu(exp_opts, variable=self.export_format_var, width=140,
-            values=["simple", "csv", "username"], fg_color=self.bg_input)
+            values=["simple", "csv", "username"], fg_color=self.bg_input, font=self._font_sub, corner_radius=0)
         self.export_format_menu.pack(side="left", padx=(0, 20))
         self.export_include_bots_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(exp_opts, text=t("export_include_bots"), variable=self.export_include_bots_var,
-            font=self._font_sub, text_color=self.text, fg_color=self.cyan).pack(side="left")
+            font=self._font_sub, text_color=self.text, fg_color=self.violet, hover_color=self.purple).pack(side="left")
         out_row = ctk.CTkFrame(tab_export, fg_color="transparent")
         out_row.pack(fill="x", pady=(0, 18))
         ctk.CTkLabel(out_row, text=t("file_save"), font=self._font_sub, text_color=self.text).pack(side="left", padx=(0, 12))
         self.entry_export_output = mk_entry(out_row, 280)
         self.entry_export_output.pack(side="left", padx=(0, 12))
         self.entry_export_output.insert(0, str(USER_DATA_DIR / "members.txt"))
-        ctk.CTkButton(out_row, text=t("browse"), width=100, height=40, corner_radius=10,
-                      font=self._font_btn, fg_color=self.cyan, hover_color="#00c4e6", text_color="#000",
-                      command=self.browse_output).pack(side="left")
+        ctk.CTkButton(out_row, text=t("browse"), width=90, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle,
+                      text_color=self.text, command=self.browse_output).pack(side="left")
         exp_btn_row = ctk.CTkFrame(tab_export, fg_color="transparent")
         exp_btn_row.pack(anchor="w")
-        ctk.CTkButton(exp_btn_row, text=t("run_export"), width=220, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color=self.lime, hover_color="#00cc6a", text_color="#000",
-                      command=self.run_export).pack(side="left", padx=(0, 10))
-        ctk.CTkButton(exp_btn_row, text=t("stop"), width=100, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color="#cc3333", hover_color="#ff4444", text_color="#fff",
+        ctk.CTkButton(exp_btn_row, text=t("run_export"), width=200, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+                      command=self.run_export).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(exp_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.rose, text_color=self.rose,
                       command=self._do_stop_script).pack(side="left")
 
         mass_label_row = ctk.CTkFrame(tab_mass, fg_color="transparent")
@@ -1477,22 +1710,45 @@ class CtkApp(ctk.CTk):
         self.entry_mass_source = mk_entry(tab_mass)
         self.entry_mass_source.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(tab_mass, text=t("message_text"), font=self._font_sub, text_color=self.text).pack(anchor="w")
-        self.entry_mass_message = ctk.CTkTextbox(tab_mass, height=80, font=ctk.CTkFont(size=13),
+        self.entry_mass_message = ctk.CTkTextbox(tab_mass, height=80, corner_radius=0, font=self._font_sub,
             fg_color=self.bg_input, text_color=self.text)
         self.entry_mass_message.pack(fill="x", pady=(0, 10))
         mass_delay_row = ctk.CTkFrame(tab_mass, fg_color="transparent")
-        mass_delay_row.pack(fill="x", pady=(0, 18))
+        mass_delay_row.pack(fill="x", pady=(0, 12))
         ctk.CTkLabel(mass_delay_row, text=t("delay_sec"), font=self._font_sub, text_color=self.text).pack(side="left", padx=(0, 8))
-        self.entry_mass_delay = mk_entry(mass_delay_row, 80)
+        spin_frame = ctk.CTkFrame(mass_delay_row, fg_color="transparent")
+        spin_frame.pack(side="left")
+        self.entry_mass_delay = ctk.CTkEntry(spin_frame, width=56, height=40, corner_radius=0,
+                                             fg_color=self.bg_input, text_color=self.text,
+                                             font=self._font_sub, justify="center")
         self.entry_mass_delay.pack(side="left")
         self.entry_mass_delay.insert(0, "2")
+        def _spin_delay(delta):
+            try:
+                v = float(self.entry_mass_delay.get().strip() or "2")
+                v = max(1, min(300, v + delta))
+                self.entry_mass_delay.delete(0, "end")
+                self.entry_mass_delay.insert(0, str(int(v) if v == int(v) else v))
+            except Exception:
+                self.entry_mass_delay.delete(0, "end")
+                self.entry_mass_delay.insert(0, "2")
+        arrows = ctk.CTkFrame(spin_frame, fg_color="transparent", width=32, height=40)
+        arrows.pack(side="left", padx=(6, 0))
+        arrows.pack_propagate(False)
+        ctk.CTkButton(arrows, text="▲", width=32, height=19, corner_radius=8,
+                      font=self._font_small, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      text_color=self.text, command=lambda: _spin_delay(1)).pack(side="top", pady=(0, 2))
+        ctk.CTkButton(arrows, text="▼", width=32, height=19, corner_radius=8,
+                      font=self._font_small, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      text_color=self.text, command=lambda: _spin_delay(-1)).pack(side="top")
         mass_btn_row = ctk.CTkFrame(tab_mass, fg_color="transparent")
-        mass_btn_row.pack(anchor="w")
-        ctk.CTkButton(mass_btn_row, text=t("run_mass_send"), width=220, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color=self.lime, hover_color="#00cc6a", text_color="#000",
-                      command=self.run_mass_send).pack(side="left", padx=(0, 10))
-        ctk.CTkButton(mass_btn_row, text=t("stop"), width=100, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color="#cc3333", hover_color="#ff4444", text_color="#fff",
+        mass_btn_row.pack(anchor="w", pady=(4, 0))
+        ctk.CTkButton(mass_btn_row, text=t("run_mass_send"), width=200, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+                      command=self.run_mass_send).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(mass_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.rose, text_color=self.rose,
                       command=self._do_stop_script).pack(side="left")
 
         stats_label_row = ctk.CTkFrame(tab_stats, fg_color="transparent")
@@ -1507,129 +1763,357 @@ class CtkApp(ctk.CTk):
         self.entry_stats_output = mk_entry(stats_out_row, 280)
         self.entry_stats_output.pack(side="left", padx=(0, 12))
         self.entry_stats_output.insert(0, str(APP_DIR / "stats.txt"))
-        ctk.CTkButton(stats_out_row, text=t("browse"), width=100, height=40, corner_radius=10,
-                      font=self._font_btn, fg_color=self.cyan, hover_color="#00c4e6", text_color="#000",
-                      command=self.browse_stats_output).pack(side="left")
+        ctk.CTkButton(stats_out_row, text=t("browse"), width=90, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle,
+                      text_color=self.text, command=self.browse_stats_output).pack(side="left")
         stats_btn_row = ctk.CTkFrame(tab_stats, fg_color="transparent")
         stats_btn_row.pack(anchor="w")
-        ctk.CTkButton(stats_btn_row, text=t("run_stats"), width=220, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color=self.lime, hover_color="#00cc6a", text_color="#000",
-                      command=self.run_stats).pack(side="left", padx=(0, 10))
-        ctk.CTkButton(stats_btn_row, text=t("stop"), width=100, height=40, corner_radius=14,
-                      font=self._font_btn, fg_color="#cc3333", hover_color="#ff4444", text_color="#fff",
+        ctk.CTkButton(stats_btn_row, text=t("run_stats"), width=200, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+                      command=self.run_stats).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(stats_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.rose, text_color=self.rose,
                       command=self._do_stop_script).pack(side="left")
 
         log_frame = ctk.CTkFrame(
-            self, fg_color=self.bg_card, corner_radius=18,
-            border_width=1, border_color=self.magenta
+            main, fg_color=self.bg_card, corner_radius=self.radius_card,
+            border_width=1, border_color=self.border_subtle
         )
         log_frame.pack(fill="both", expand=True, padx=28, pady=(0, 28))
         log_inner = ctk.CTkFrame(log_frame, fg_color="transparent")
         log_inner.pack(fill="both", expand=True, padx=18, pady=18)
-        ctk.CTkLabel(log_inner, text=t("log"), font=ctk.CTkFont(family="Segoe UI Semibold", size=15),
-                     text_color=self.magenta).pack(anchor="w")
+        log_title_row = ctk.CTkFrame(log_inner, fg_color="transparent")
+        log_title_row.pack(fill="x")
+        ctk.CTkLabel(log_title_row, text=t("log"), font=self._font_section,
+                     text_color="#ffffff").pack(anchor="center", expand=True)
         prog_frame = ctk.CTkFrame(log_inner, fg_color="transparent")
         prog_frame.pack(fill="x", pady=(10, 6))
         self.progress_var = ctk.DoubleVar(value=0)
         self.progress_bar = ctk.CTkProgressBar(prog_frame, variable=self.progress_var, height=14,
-                                               progress_color=self.lime, fg_color=self.bg_input)
+                                               progress_color=self.emerald, fg_color=self.bg_input, corner_radius=8)
         self.progress_bar.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.progress_label = ctk.CTkLabel(prog_frame, text="", font=ctk.CTkFont(size=12, weight="bold"),
-                                           text_color=self.cyan, width=120, anchor="e")
+        self.progress_label = ctk.CTkLabel(prog_frame, text="", font=self._font_small,
+                                           text_color=self.muted, width=120, anchor="e")
         self.progress_label.pack(side="right")
         self._progress_poll_id = None
-        self.log = ctk.CTkTextbox(log_inner, height=100,
+        self.log = ctk.CTkTextbox(log_inner, height=100, corner_radius=0,
                                   font=ctk.CTkFont(family="Consolas", size=12),
-                                  fg_color=self.bg_input, text_color=self.lime)
+                                  fg_color=self.bg_input, text_color=self.text)
         self.log.pack(fill="both", expand=True, pady=(10, 0))
 
+        self.after(800, self._load_user_info_async)
+        self.after(4000, self._load_user_info_async)
+        self.after(10000, self._load_user_info_async)
+
+    def _log_profile(self, msg):
+        try:
+            self.after(0, lambda: (self.log.insert("end", f"[Профиль] {msg}\n"), self.log.see("end")))
+        except Exception:
+            pass
+
+    def _load_user_info_async(self):
+        """В фоне: проверить сессию, получить get_me + аватар, показать профиль вместо настроек API."""
+        if self._cached_user:
+            return
+        def run():
+            err_msg = None
+            try:
+                self._log_profile("проверка сессии...")
+                cfg = load_config()
+                api_id = (cfg.get("api_id") or "").strip()
+                api_hash = (cfg.get("api_hash") or "").strip()
+                if not api_id or not api_hash:
+                    self._log_profile("нет api_id/api_hash в настройках")
+                    return
+                session_name = (cfg.get("session_name") or "session_export").strip() or "session_export"
+                bases = [USER_DATA_DIR, APP_DIR, Path.cwd()]
+                session_path = None
+                for base in bases:
+                    p = base / (session_name + ".session")
+                    if p.exists():
+                        session_path = str(p.with_suffix(""))
+                        break
+                if not session_path:
+                    self._log_profile("файл сессии не найден")
+                    return
+                self._log_profile(f"сессия: {session_path}")
+                from telethon import TelegramClient
+                if sys.platform == "darwin":
+                    try:
+                        import certifi
+                        os.environ["SSL_CERT_FILE"] = certifi.where()
+                        os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+                    except Exception:
+                        pass
+                client = TelegramClient(session_path, int(api_id), api_hash)
+
+                async def fetch():
+                    await client.connect()
+                    if not client.is_user_authorized():
+                        self._log_profile("сессия не авторизована")
+                        await client.disconnect()
+                        return None
+                    me = await client.get_me()
+                    first = (getattr(me, "first_name", "") or "").strip()
+                    last = (getattr(me, "last_name", "") or "").strip()
+                    username = getattr(me, "username", None) or None
+                    uid = getattr(me, "id", 0)
+                    phone = cfg.get("phone", "") or getattr(me, "phone", "") or ""
+                    photo_path = None
+                    try:
+                        import tempfile
+                        photo_path = os.path.join(tempfile.gettempdir(), f"psy_avatar_{uid}.jpg")
+                        await client.download_profile_photo(me, file=photo_path)
+                    except Exception:
+                        pass
+                    await client.disconnect()
+                    return {"first_name": first, "last_name": last, "username": username, "id": uid, "phone": phone, "photo_path": photo_path}
+
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    data = loop.run_until_complete(fetch())
+                    if data:
+                        def apply():
+                            if not self._cached_user:
+                                self._set_cached_user(data)
+                                self._refresh_profile_block()
+                                self._log_profile("профиль показан")
+                        self.after(0, apply)
+                finally:
+                    try:
+                        loop.close()
+                    except Exception:
+                        pass
+            except Exception as e:
+                err_msg = str(e)
+            if err_msg:
+                self._log_profile(f"ошибка: {err_msg}")
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _set_cached_user(self, data):
+        self._cached_user = data
+
+    def _refresh_profile_block(self):
+        """Показать профиль или форму API в зависимости от _cached_user."""
+        if self._cached_user:
+            self._api_frame.pack_forget()
+            self._fill_profile_frame()
+            self._profile_frame.pack(fill="x")
+        else:
+            self._profile_frame.pack_forget()
+            self._api_frame.pack(fill="x")
+
+    def _fill_profile_frame(self):
+        """Заполнить блок профиля: карточка с аватаром, ником, статистикой."""
+        for w in self._profile_frame.winfo_children():
+            w.destroy()
+        t = self._t
+        u = self._cached_user
+        first = u.get("first_name", "") or ""
+        last = (u.get("last_name", "") or "").strip()
+        username = u.get("username") or None
+        uid = u.get("id") or 0
+        phone = u.get("phone", "") or ""
+        photo_path = u.get("photo_path")
+
+        # Title
+        ctk.CTkLabel(self._profile_frame, text=t("profile"), font=self._font_section,
+                     text_color=self.cyan).pack(anchor="w", pady=(0, 16))
+
+        # Profile card
+        profile_card = ctk.CTkFrame(self._profile_frame, fg_color=self.bg_input,
+                                     corner_radius=16, border_width=1, border_color=self.border_subtle)
+        profile_card.pack(fill="x", pady=(0, 0))
+        profile_inner = ctk.CTkFrame(profile_card, fg_color="transparent")
+        profile_inner.pack(fill="x", padx=20, pady=20)
+
+        # Top: avatar + info side by side
+        top_row = ctk.CTkFrame(profile_inner, fg_color="transparent")
+        top_row.pack(fill="x")
+
+        # Avatar
+        avatar_frame = ctk.CTkFrame(top_row, fg_color=self.border_subtle, width=64, height=64, corner_radius=32)
+        avatar_frame.pack(side="left", padx=(0, 16))
+        avatar_frame.pack_propagate(False)
+        if photo_path and os.path.exists(photo_path):
+            try:
+                img = ctk.CTkImage(light_image=photo_path, dark_image=photo_path, size=(56, 56))
+                av_lbl = ctk.CTkLabel(avatar_frame, text="", image=img, fg_color="transparent")
+                av_lbl.place(relx=0.5, rely=0.5, anchor="center")
+            except Exception:
+                letter = (first or "?")[0].upper()
+                ctk.CTkLabel(avatar_frame, text=letter, font=self._font_title,
+                             text_color=self.cyan, fg_color="transparent").place(relx=0.5, rely=0.5, anchor="center")
+        else:
+            letter = (first or "?")[0].upper()
+            ctk.CTkLabel(avatar_frame, text=letter, font=self._font_title,
+                        text_color=self.cyan, fg_color="transparent").place(relx=0.5, rely=0.5, anchor="center")
+
+        # Name + username + stats
+        info_col = ctk.CTkFrame(top_row, fg_color="transparent")
+        info_col.pack(side="left", fill="x", expand=True)
+
+        display_name = f"{first} {last}".strip() or "—"
+        ctk.CTkLabel(info_col, text=display_name, font=self._font_section,
+                     text_color=self.text).pack(anchor="w")
+        if username:
+            ctk.CTkLabel(info_col, text=f"@{username}", font=self._font_sub,
+                         text_color=self.muted).pack(anchor="w", pady=(2, 0))
+
+        # Stats row
+        stat_row = ctk.CTkFrame(info_col, fg_color="transparent")
+        stat_row.pack(anchor="w", pady=(6, 0))
+        ctk.CTkLabel(stat_row, text=f"ID: {uid}", font=self._font_small,
+                     text_color=self.muted).pack(side="left", padx=(0, 16))
+        if phone:
+            ctk.CTkLabel(stat_row, text=f"☎ {phone}", font=self._font_small,
+                         text_color=self.muted).pack(side="left")
+
+        # Action buttons
+        btn_row = ctk.CTkFrame(profile_inner, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(16, 0))
+        ctk.CTkButton(btn_row, text="Re-auth", width=100, height=38, corner_radius=12,
+                      font=self._font_btn, fg_color=self.bg_card, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle, text_color=self.text,
+                      command=self._on_reauth_click).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btn_row, text=t("reset_session"), width=130, height=38, corner_radius=12,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle, text_color=self.text,
+                      command=self._on_reset_session_click).pack(side="left")
+
+    def _on_login_success(self):
+        """После успешного входа — подгрузить профиль и показать блок профиля."""
+        self._load_user_info_async()
+
     def _show_lang_dialog(self):
+        """Выпадающий список под кнопкой языка (без отдельного окна). Закрывается по клику снаружи или Escape."""
         self.update_idletasks()
+        bw = self.lang_btn.winfo_width()
         bx = self.lang_btn.winfo_rootx()
         by = self.lang_btn.winfo_rooty() + self.lang_btn.winfo_height() + 4
-        pop_w, pop_h = 220, 130
+        pop_w = max(180, bw)
+        row_h = 44
+        pop_h = row_h * 2 + 16
 
         top = ctk.CTkToplevel(self)
         top.title("")
         top.geometry(f"{pop_w}x{pop_h}")
         top.configure(fg_color=self.bg_dropdown)
         top.resizable(False, False)
-        top.transient(self)
-        top.grab_set()
-        x = bx + self.lang_btn.winfo_width() - pop_w
+        top.overrideredirect(True)
+        x = bx + bw - pop_w
         if x < 10:
             x = bx
         top.geometry(f"+{x}+{by}")
 
         frame = ctk.CTkFrame(top, fg_color=self.bg_dropdown, corner_radius=12,
-                             border_width=1, border_color=self.cyan)
-        frame.pack(fill="both", expand=True, padx=8, pady=8)
+                             border_width=1, border_color=self.border_subtle)
+        frame.pack(fill="both", expand=True, padx=2, pady=2)
+
+        def close_dropdown():
+            try:
+                top.destroy()
+            except Exception:
+                pass
 
         def pick(l):
             cfg = load_config()
             self.lang = l
             cfg["lang"] = l
             save_config(cfg)
-            top.destroy()
+            close_dropdown()
             for w in self.winfo_children():
                 w.destroy()
             self._build_ui()
 
-        opts = [("ru", "Русский"), ("en", "English")]
-        for code, name in opts:
+        for code, name in [("ru", "Русский"), ("en", "English")]:
             is_sel = self.lang == code
-            txt = f"  {name}" + ("  ✓" if is_sel else "")
-            btn = ctk.CTkButton(frame, text=txt, height=40, corner_radius=10,
-                                anchor="w", font=ctk.CTkFont(size=14),
-                                fg_color=self.bg_card if is_sel else "transparent",
-                                hover_color="#1a1530", text_color=self.lime if is_sel else self.text,
+            row = ctk.CTkFrame(frame, fg_color="transparent",
+                              corner_radius=10, height=row_h)
+            row.pack(fill="x", padx=6, pady=3)
+            row.pack_propagate(False)
+            btn = ctk.CTkButton(row, text=name, height=row_h - 4, corner_radius=8,
+                                anchor="w", font=self._font_btn,
+                                fg_color="transparent", hover_color=self.border_subtle,
+                                text_color="#fff" if is_sel else self.text,
                                 command=lambda c=code: pick(c))
-            btn.pack(fill="x", pady=3)
+            btn.pack(side="left", fill="x", expand=True, padx=(12, 0))
+            if is_sel:
+                ctk.CTkLabel(row, text="✓", font=self._font_btn,
+                             text_color=self.emerald, width=20).pack(side="right", padx=10)
 
-        top.after(30, lambda: animate_fade_in(top))
+        top.bind("<Escape>", lambda e: close_dropdown())
+        top.bind("<FocusOut>", lambda e: self.after(150, close_dropdown))
+        top.after(100, top.focus_set)
 
     def _show_api_help(self):
         top = ctk.CTkToplevel(self)
-        top.title("API ID & Hash — " + ("Инструкция" if self.lang == "ru" else "Guide"))
-        top.geometry("580x560")
-        top.configure(fg_color=self.bg_card)
+        top.title("")
+        top.geometry("620x580")
+        top.configure(fg_color="#0c0a12")
         top.transient(self)
+        top.resizable(False, False)
+        card = ctk.CTkFrame(top, fg_color=self.bg_card, corner_radius=18,
+                            border_width=1, border_color=self.border_subtle)
+        card.pack(fill="both", expand=True, padx=14, pady=14)
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=28, pady=28)
+        ctk.CTkLabel(inner, text="API ID & Hash", font=self._font_section,
+                     text_color=self.cyan).pack(anchor="w", pady=(0, 16))
         txt = API_HELP_RU if self.lang == "ru" else API_HELP_EN
-        frame = ctk.CTkFrame(top, fg_color="transparent")
-        frame.pack(fill="both", expand=True, padx=24, pady=24)
-        tb = ctk.CTkTextbox(frame, font=ctk.CTkFont(family="Segoe UI", size=12),
-                            fg_color=self.bg_input, text_color=self.cyan, wrap="word")
-        tb.pack(fill="both", expand=True)
+        tb = ctk.CTkTextbox(inner, font=self._font_sub,
+                            fg_color=self.bg_input, text_color=self.text,
+                            wrap="word", corner_radius=0, border_width=0, activate_scrollbars=True)
+        tb.pack(fill="both", expand=True, pady=(0, 20))
         tb.insert("1.0", txt)
         tb.configure(state="disabled")
-        ctk.CTkButton(frame, text=self._t("close"), width=110, height=38, corner_radius=12,
-                      font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
-                      command=top.destroy).pack(pady=(14, 0))
-        top.after(50, lambda: animate_fade_in(top))
+        ctk.CTkButton(inner, text=self._t("close"), width=120, height=40, corner_radius=12,
+                      font=self._font_btn, fg_color=self.violet, hover_color=self.purple, text_color="#fff",
+                      command=top.destroy).pack(pady=(0, 0))
 
     def _mk_help_btn(self, parent, help_key):
-        return ctk.CTkButton(parent, text="?", width=28, height=28, corner_radius=14,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            fg_color=self.cyan, hover_color="#00c4e6", text_color="#000",
+        kw = dict(width=26, height=26, corner_radius=13, fg_color="transparent",
+            hover_color=self.border_subtle, border_width=0,
             command=lambda k=help_key: self._show_feature_help(k))
+        if self._icon_info:
+            kw["text"] = ""
+            kw["image"] = self._icon_info
+        else:
+            kw["text"] = "ⓘ"
+            kw["font"] = self._font_small
+        return ctk.CTkButton(parent, **kw)
 
     def _show_feature_help(self, key):
         top = ctk.CTkToplevel(self)
-        top.title("?" if self.lang == "ru" else "Help")
-        top.geometry("480x320")
-        top.configure(fg_color=self.bg_card)
+        top.title("")
+        top.geometry("520x380")
+        top.configure(fg_color="#0c0a12")
         top.transient(self)
-        frame = ctk.CTkFrame(top, fg_color="transparent")
-        frame.pack(fill="both", expand=True, padx=24, pady=24)
-        tb = ctk.CTkTextbox(frame, font=ctk.CTkFont(family="Segoe UI", size=12),
-                            fg_color=self.bg_input, text_color=self.cyan, wrap="word")
-        tb.pack(fill="both", expand=True)
-        tb.insert("1.0", self._t(key))
+        top.resizable(False, False)
+        card = ctk.CTkFrame(top, fg_color=self.bg_card, corner_radius=18,
+                            border_width=1, border_color=self.border_subtle)
+        card.pack(fill="both", expand=True, padx=14, pady=14)
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=28, pady=28)
+        help_text = self._t(key)
+        lines = help_text.strip().split("\n", 1)
+        title_text = lines[0].strip() if lines else ""
+        body_text = lines[1].strip() if len(lines) > 1 else help_text
+        ctk.CTkLabel(inner, text=title_text, font=self._font_section,
+                     text_color=self.cyan).pack(anchor="w", pady=(0, 12))
+        tb = ctk.CTkTextbox(inner, font=self._font_sub,
+                            fg_color=self.bg_input, text_color=self.text,
+                            wrap="word", corner_radius=0, border_width=0, activate_scrollbars=True)
+        tb.pack(fill="both", expand=True, pady=(0, 20))
+        tb.insert("1.0", body_text)
         tb.configure(state="disabled")
-        ctk.CTkButton(frame, text=self._t("close"), width=110, height=38, corner_radius=12,
-                      font=self._font_btn, fg_color=self.magenta, hover_color="#ff5aad",
-                      command=top.destroy).pack(pady=(14, 0))
-        top.after(50, lambda: animate_fade_in(top))
+        ctk.CTkButton(inner, text=self._t("close"), width=120, height=40, corner_radius=12,
+                      font=self._font_btn, fg_color=self.violet, hover_color=self.purple, text_color="#fff",
+                      command=top.destroy).pack()
 
     def _on_auth_click(self):
         """Нажатие «Авторизация»: сначала сохраняем настройки; на Mac save может падать — тогда всё равно запускаем авторизацию."""
@@ -1637,7 +2121,7 @@ class CtkApp(ctk.CTk):
             self.save_settings(silent=True)
         except Exception:
             pass
-        run_auth(self, self.log)
+        run_auth(self, self.log, on_success=self._on_login_success)
 
     def _on_qr_auth_click(self):
         """QR-авторизация (через сканирование QR в Telegram)."""
@@ -1645,7 +2129,7 @@ class CtkApp(ctk.CTk):
             self.save_settings(silent=True)
         except Exception:
             pass
-        run_qr_auth(self, self.log)
+        run_qr_auth(self, self.log, on_success=self._on_login_success)
 
     def _wipe_all_session_files(self):
         """Удаляет все файлы сессии во всех известных местах (Windows + Mac). Возвращает число удалённых файлов."""
@@ -1690,7 +2174,7 @@ class CtkApp(ctk.CTk):
                 self.save_settings(silent=True)
             except Exception:
                 pass
-            run_auth(self, self.log)
+            run_auth(self, self.log, on_success=self._on_login_success)
 
     def _on_reset_session_click(self):
         """Полный сброс сессии: только удалить все следы (Win + Mac). Авторизация не запускается."""
@@ -1706,6 +2190,8 @@ class CtkApp(ctk.CTk):
             except Exception:
                 pass
             messagebox.showinfo(self._t("reset_session"), self._t("reset_session_done").format(n=deleted))
+            self._cached_user = None
+            self._refresh_profile_block()
         except Exception as e:
             messagebox.showerror("Error", f"Could not reset session: {e}")
 

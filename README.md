@@ -1,5 +1,25 @@
 # Psylocyba Tools
 
+## Ресурсы (шрифты, иконки, флаги)
+
+- **Шрифт Inter** — при первом запуске приложения скачивается сам в **assets/fonts/** (если папки или файлов нет). Перезапусти приложение после первого запуска, чтобы шрифт применился.
+- **Иконки и флаги** — чтобы появились иконки у кнопок и флаги в выборе языка, один раз запусти скрипт:
+  1. Открой папку проекта в проводнике.
+  2. Запусти **create_resources.bat** (двойной клик) или в терминале из папки проекта: `python create_assets.py`  
+  Нужен Python и Pillow (`pip install Pillow`).
+
+Где что лежит:
+- **assets/fonts/** — Inter (скачивается при первом запуске приложения)
+- **assets/icons/** — key.png, qr.png, refresh.png, trash.png, info.png (создаёт create_assets.py)
+- **assets/flags/** — ru.png, gb.png (создаёт create_assets.py)
+
+## Сборка exe (Windows)
+
+1. **Создай ресурсы** (один раз), чтобы шрифт, иконки и флаги попали в exe: запусти **create_resources.bat** или `python create_assets.py`.
+2. Запусти **build_exe.bat** (или `python build_exe.py`). Готовый exe: **dist\\Psylocyba_Tools.exe**.
+
+---
+
 Desktop app for Telegram (Windows + macOS): clone groups/channels, export members, stats, mass messaging. Modern GUI with license key protection.
 
 ## Features
