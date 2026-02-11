@@ -1169,7 +1169,7 @@ def _show_license_dialog(attempt=0):
 
             btn = ctk.CTkButton(frame, text=t("license_activate"), command=on_activate,
                                 height=44, corner_radius=22, font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold"),
-                                fg_color="#10b981", hover_color="#34d399", text_color="#fff")
+                                fg_color="#c2eb60", hover_color="#a8d650", text_color="#fff")
             btn.pack(pady=(0, 8))
             entry.focus()
             root.mainloop()
@@ -1202,7 +1202,7 @@ def _show_license_dialog(attempt=0):
                     messagebox.showerror("", msg)
 
             tk.Button(root, text=t("license_activate"), command=on_activate,
-                      font=(FONT_FAMILY, 13, "bold"), bg="#10b981", fg="#fff", activebackground="#34d399",
+                      font=(FONT_FAMILY, 13, "bold"), bg="#c2eb60", fg="#fff", activebackground="#a8d650",
                       activeforeground="#fff", relief="flat", cursor="hand2", padx=24, pady=10).pack(pady=(0, 24))
             entry.focus()
             root.mainloop()
@@ -1247,23 +1247,23 @@ class CtkApp(ctk.CTk):
         self.geometry("900x820")
         self.minsize(720, 660)
 
-        self.bg_main = "#003554"
+        self.bg_main = "#3d149f"
         self.configure(fg_color=self.bg_main)
         self.cyan = "#22d3ee"
         self.magenta = "#d946ef"
         self.lime = "#34d399"
         self.purple = "#a78bfa"
         self.violet = "#8b5cf6"
-        self.emerald = "#10b981"
-        self.rose = "#f43f5e"
+        self.emerald = "#c2eb60"
+        self.rose = "#ef4a53"
         self.amber = "#f59e0b"
         self.sky = "#38bdf8"
         self.text = "#f1f0f5"
         self.muted = "#8b8699"
-        self.bg_card = "#004366"
-        self.bg_input = "#002a40"
-        self.bg_dropdown = "#003d5c"
-        self.border_subtle = "#005577"
+        self.bg_card = "#8a60eb"
+        self.bg_input = "#7a50db"
+        self.bg_dropdown = "#8a60eb"
+        self.border_subtle = "#9d7aed"
         self.radius_pill = 12
         self.radius_card = 16
 
@@ -1514,7 +1514,7 @@ class CtkApp(ctk.CTk):
         _rb_h, _rb_r = 40, 10
         ctk.CTkButton(right_btns, text=t("help_api"), width=140, height=_rb_h, corner_radius=_rb_r,
                       font=self._font_btn, fg_color=self.bg_dropdown, hover_color=self.border_subtle,
-                      border_width=1, border_color=self.border_subtle, text_color=self.muted,
+                      border_width=1, border_color=self.border_subtle, text_color="#ffffff",
                       command=self._show_api_help).pack(side="right", padx=(8, 0))
         self.lang_btn = ctk.CTkButton(
             right_btns, text=("RU" if self.lang == "ru" else "EN"),
@@ -1543,7 +1543,8 @@ class CtkApp(ctk.CTk):
 
         cfg = load_config()
         _label_w = 90
-        _entry_w = 340
+        # Ширина полей = правый край ряда кнопок (120+100+100+130 + отступы 8*3) минус подписи
+        _entry_w = 120 + 8 + 100 + 8 + 100 + 8 + 130 - _label_w - 14
         grid = ctk.CTkFrame(self._api_frame, fg_color="transparent")
         grid.pack(fill="x", pady=(14, 0))
         grid.columnconfigure(1, minsize=_entry_w)
@@ -1571,8 +1572,9 @@ class CtkApp(ctk.CTk):
                                         font=self._font_sub)
         self.entry_phone.pack(side="left")
         self.entry_phone.insert(0, cfg.get("phone", ""))
-        ctk.CTkLabel(phone_row, text="  " + t("phone_hint"), font=self._font_small,
-                     text_color=self.muted).pack(side="left")
+        ctk.CTkLabel(phone_row, text="  " + t("phone_hint"),
+                     font=ctk.CTkFont(family=_fam, size=11, weight="bold"),
+                     text_color="#ffffff").pack(side="left")
 
         btn_row = ctk.CTkFrame(self._api_frame, fg_color="transparent")
         btn_row.pack(fill="x", pady=(18, 0))
@@ -1604,10 +1606,10 @@ class CtkApp(ctk.CTk):
         self.tabview = ctk.CTkTabview(
             main, fg_color=self.bg_card, corner_radius=self.radius_card,
             segmented_button_fg_color=self.bg_input,
-            segmented_button_selected_color=self.violet,
+            segmented_button_selected_color="#c6b2f5",
             segmented_button_unselected_color=self.bg_input,
             segmented_button_unselected_hover_color=self.border_subtle,
-            segmented_button_selected_hover_color=self.purple,
+            segmented_button_selected_hover_color="#b39aed",
             text_color=self.text
         )
         self.tabview.pack(fill="both", expand=True, padx=28, pady=10)
@@ -1639,14 +1641,14 @@ class CtkApp(ctk.CTk):
         self.entry_group_title = mk_entry(tab_group)
         self.entry_group_title.pack(fill="x", pady=(0, 18))
         grp_btn_row = ctk.CTkFrame(tab_group, fg_color="transparent")
-        grp_btn_row.pack(anchor="w")
-        ctk.CTkButton(grp_btn_row, text=t("run_clone_group"), width=200, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+        grp_btn_row.pack(anchor="center")
+        _run_w = 200
+        ctk.CTkButton(grp_btn_row, text=t("run_clone_group"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#a8d650", text_color="#000000",
                       command=self.run_clone_group).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(grp_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
-                      border_width=1, border_color=self.rose, text_color=self.rose,
-                      command=self._do_stop_script).pack(side="left")
+        ctk.CTkButton(grp_btn_row, text=t("stop"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
+                      anchor="center", command=self._do_stop_script).pack(side="left")
 
         ch_label_row = ctk.CTkFrame(tab_channel, fg_color="transparent")
         ch_label_row.pack(anchor="w")
@@ -1658,14 +1660,13 @@ class CtkApp(ctk.CTk):
         self.entry_channel_title = mk_entry(tab_channel)
         self.entry_channel_title.pack(fill="x", pady=(0, 18))
         ch_btn_row = ctk.CTkFrame(tab_channel, fg_color="transparent")
-        ch_btn_row.pack(anchor="w")
-        ctk.CTkButton(ch_btn_row, text=t("run_clone_group"), width=200, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+        ch_btn_row.pack(anchor="center")
+        ctk.CTkButton(ch_btn_row, text=t("run_clone_group"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#a8d650", text_color="#000000",
                       command=self.run_clone_channel).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(ch_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
-                      border_width=1, border_color=self.rose, text_color=self.rose,
-                      command=self._do_stop_script).pack(side="left")
+        ctk.CTkButton(ch_btn_row, text=t("stop"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
+                      anchor="center", command=self._do_stop_script).pack(side="left")
 
         exp_label_row = ctk.CTkFrame(tab_export, fg_color="transparent")
         exp_label_row.pack(anchor="w")
@@ -1694,14 +1695,13 @@ class CtkApp(ctk.CTk):
                       border_width=1, border_color=self.border_subtle,
                       text_color=self.text, command=self.browse_output).pack(side="left")
         exp_btn_row = ctk.CTkFrame(tab_export, fg_color="transparent")
-        exp_btn_row.pack(anchor="w")
-        ctk.CTkButton(exp_btn_row, text=t("run_export"), width=200, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+        exp_btn_row.pack(anchor="center")
+        ctk.CTkButton(exp_btn_row, text=t("run_export"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#a8d650", text_color="#000000",
                       command=self.run_export).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(exp_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
-                      border_width=1, border_color=self.rose, text_color=self.rose,
-                      command=self._do_stop_script).pack(side="left")
+        ctk.CTkButton(exp_btn_row, text=t("stop"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
+                      anchor="center", command=self._do_stop_script).pack(side="left")
 
         mass_label_row = ctk.CTkFrame(tab_mass, fg_color="transparent")
         mass_label_row.pack(anchor="w")
@@ -1742,14 +1742,13 @@ class CtkApp(ctk.CTk):
                       font=self._font_small, fg_color=self.bg_input, hover_color=self.border_subtle,
                       text_color=self.text, command=lambda: _spin_delay(-1)).pack(side="top")
         mass_btn_row = ctk.CTkFrame(tab_mass, fg_color="transparent")
-        mass_btn_row.pack(anchor="w", pady=(4, 0))
-        ctk.CTkButton(mass_btn_row, text=t("run_mass_send"), width=200, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+        mass_btn_row.pack(anchor="center", pady=(4, 0))
+        ctk.CTkButton(mass_btn_row, text=t("run_mass_send"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#a8d650", text_color="#000000",
                       command=self.run_mass_send).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(mass_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
-                      border_width=1, border_color=self.rose, text_color=self.rose,
-                      command=self._do_stop_script).pack(side="left")
+        ctk.CTkButton(mass_btn_row, text=t("stop"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
+                      anchor="center", command=self._do_stop_script).pack(side="left")
 
         stats_label_row = ctk.CTkFrame(tab_stats, fg_color="transparent")
         stats_label_row.pack(anchor="w")
@@ -1768,14 +1767,13 @@ class CtkApp(ctk.CTk):
                       border_width=1, border_color=self.border_subtle,
                       text_color=self.text, command=self.browse_stats_output).pack(side="left")
         stats_btn_row = ctk.CTkFrame(tab_stats, fg_color="transparent")
-        stats_btn_row.pack(anchor="w")
-        ctk.CTkButton(stats_btn_row, text=t("run_stats"), width=200, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.emerald, hover_color="#34d399", text_color="#fff",
+        stats_btn_row.pack(anchor="center")
+        ctk.CTkButton(stats_btn_row, text=t("run_stats"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#a8d650", text_color="#000000",
                       command=self.run_stats).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(stats_btn_row, text=t("stop"), width=90, height=40, corner_radius=self.radius_pill,
-                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
-                      border_width=1, border_color=self.rose, text_color=self.rose,
-                      command=self._do_stop_script).pack(side="left")
+        ctk.CTkButton(stats_btn_row, text=t("stop"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
+                      anchor="center", command=self._do_stop_script).pack(side="left")
 
         log_frame = ctk.CTkFrame(
             main, fg_color=self.bg_card, corner_radius=self.radius_card,
@@ -1793,9 +1791,11 @@ class CtkApp(ctk.CTk):
         self.progress_var = ctk.DoubleVar(value=0)
         self.progress_bar = ctk.CTkProgressBar(prog_frame, variable=self.progress_var, height=14,
                                                progress_color=self.emerald, fg_color=self.bg_input, corner_radius=8)
-        self.progress_bar.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.progress_label = ctk.CTkLabel(prog_frame, text="", font=self._font_small,
-                                           text_color=self.muted, width=120, anchor="e")
+        self.progress_bar.pack(fill="x", expand=True)
+        prog_label_row = ctk.CTkFrame(log_inner, fg_color="transparent")
+        prog_label_row.pack(fill="x", pady=(2, 0))
+        self.progress_label = ctk.CTkLabel(prog_label_row, text="", font=self._font_small,
+                                           text_color=self.muted, anchor="e")
         self.progress_label.pack(side="right")
         self._progress_poll_id = None
         self.log = ctk.CTkTextbox(log_inner, height=100, corner_radius=0,
@@ -2010,9 +2010,9 @@ class CtkApp(ctk.CTk):
             x = bx
         top.geometry(f"+{x}+{by}")
 
-        frame = ctk.CTkFrame(top, fg_color=self.bg_dropdown, corner_radius=12,
+        frame = ctk.CTkFrame(top, fg_color=self.bg_dropdown, corner_radius=20,
                              border_width=1, border_color=self.border_subtle)
-        frame.pack(fill="both", expand=True, padx=2, pady=2)
+        frame.pack(fill="both", expand=True, padx=4, pady=4)
 
         def close_dropdown():
             try:
