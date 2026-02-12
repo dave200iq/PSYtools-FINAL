@@ -837,9 +837,11 @@ LANG = {
         "clone_channel": "Клонировать канал",
         "export": "Экспорт подписчиков",
         "link_group": "Ссылка или @username группы:",
+        "select_from_chats": "Выбрать из моих чатов",
         "name_group": "Название новой группы (пусто = как у исходной):",
         "run_clone_group": "Запустить клонирование",
         "link_channel": "Ссылка или @username канала:",
+        "select_from_chats_ch": "Выбрать из моих каналов",
         "name_channel": "Название нового канала (пусто = как у исходного):",
         "link_export": "Ссылка или @username канала/чата:",
         "file_save": "Файл для сохранения:",
@@ -923,9 +925,11 @@ LANG = {
         "clone_channel": "Clone Channel",
         "export": "Export Subscribers",
         "link_group": "Link or @username of group:",
+        "select_from_chats": "Select from my chats",
         "name_group": "New group name (empty = same as source):",
         "run_clone_group": "Run Clone",
         "link_channel": "Link or @username of channel:",
+        "select_from_chats_ch": "Select from my channels",
         "name_channel": "New channel name (empty = same as source):",
         "link_export": "Link or @username of channel/chat:",
         "file_save": "Save to file:",
@@ -1635,8 +1639,15 @@ class CtkApp(ctk.CTk):
         grp_label_row.pack(anchor="w")
         ctk.CTkLabel(grp_label_row, text=t("link_group"), font=self._font_sub, text_color=self.text).pack(side="left")
         self._mk_help_btn(grp_label_row, "help_clone_group").pack(side="left", padx=(8, 0))
-        self.entry_group_source = mk_entry(tab_group)
-        self.entry_group_source.pack(fill="x", pady=(0, 10))
+        grp_source_row = ctk.CTkFrame(tab_group, fg_color="transparent")
+        grp_source_row.pack(fill="x", pady=(0, 6))
+        self.entry_group_source = mk_entry(grp_source_row)
+        self.entry_group_source.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ctk.CTkButton(grp_source_row, text=t("select_from_chats"), width=160, height=40, corner_radius=10,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle, text_color=self.text,
+                      command=lambda: self._select_chat_into_entry(self.entry_group_source, channels_only=False)).pack(side="left")
+        ctk.CTkLabel(tab_group, text="", font=self._font_sub).pack(pady=(0, 4))
         ctk.CTkLabel(tab_group, text=t("name_group"), font=self._font_sub, text_color=self.text).pack(anchor="w")
         self.entry_group_title = mk_entry(tab_group)
         self.entry_group_title.pack(fill="x", pady=(0, 18))
@@ -1654,8 +1665,15 @@ class CtkApp(ctk.CTk):
         ch_label_row.pack(anchor="w")
         ctk.CTkLabel(ch_label_row, text=t("link_channel"), font=self._font_sub, text_color=self.text).pack(side="left")
         self._mk_help_btn(ch_label_row, "help_clone_channel").pack(side="left", padx=(8, 0))
-        self.entry_channel_source = mk_entry(tab_channel)
-        self.entry_channel_source.pack(fill="x", pady=(0, 10))
+        ch_source_row = ctk.CTkFrame(tab_channel, fg_color="transparent")
+        ch_source_row.pack(fill="x", pady=(0, 6))
+        self.entry_channel_source = mk_entry(ch_source_row)
+        self.entry_channel_source.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ctk.CTkButton(ch_source_row, text=t("select_from_chats_ch"), width=160, height=40, corner_radius=10,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle, text_color=self.text,
+                      command=lambda: self._select_chat_into_entry(self.entry_channel_source, channels_only=True)).pack(side="left")
+        ctk.CTkLabel(tab_channel, text="", font=self._font_sub).pack(pady=(0, 4))
         ctk.CTkLabel(tab_channel, text=t("name_channel"), font=self._font_sub, text_color=self.text).pack(anchor="w")
         self.entry_channel_title = mk_entry(tab_channel)
         self.entry_channel_title.pack(fill="x", pady=(0, 18))
@@ -1988,6 +2006,83 @@ class CtkApp(ctk.CTk):
     def _on_login_success(self):
         """После успешного входа — подгрузить профиль и показать блок профиля."""
         self._load_user_info_async()
+
+    def _select_chat_into_entry(self, entry_widget, channels_only=False):
+        """Запуск list_my_chats в потоке, затем диалог выбора канала/группы; запись в entry_widget."""
+        def run_fetch():
+            env = {**os.environ, "TELEGRAM_APP_DIR": str(APP_DIR), "PYTHONIOENCODING": "utf-8"}
+            if getattr(sys, "frozen", False):
+                cmd = [sys.executable, "--script", "list_my_chats.py"]
+            else:
+                cmd = [sys.executable, str(SCRIPTS_DIR / "list_my_chats.py")]
+            if channels_only:
+                cmd.append("--channels")
+            else:
+                cmd.append("--groups")
+            try:
+                r = subprocess.run(cmd, cwd=str(APP_DIR), env=env, capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace")
+                out = (r.stdout or "").strip()
+                err = (r.stderr or "").strip()
+                if r.returncode != 0:
+                    msg = (err or out or "Script failed.").strip()
+                    try:
+                        data = json.loads(msg)
+                        if "error" in data:
+                            msg = data["error"]
+                    except Exception:
+                        pass
+                    self.after(0, lambda: messagebox.showerror("", msg[:300]))
+                    return
+                try:
+                    chats = json.loads(out) if out else []
+                except json.JSONDecodeError:
+                    self.after(0, lambda: messagebox.showerror("", "Invalid response from script."))
+                    return
+                if not chats:
+                    self.after(0, lambda: messagebox.showinfo("", self._t("enter_link_group") if not channels_only else self._t("enter_link_channel")))
+                    return
+                self.after(0, lambda: self._show_chat_select_dialog(chats, entry_widget))
+            except subprocess.TimeoutExpired:
+                self.after(0, lambda: messagebox.showerror("", "Timeout loading chats."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("", str(e)[:200]))
+
+        threading.Thread(target=run_fetch, daemon=True).start()
+
+    def _show_chat_select_dialog(self, chats, entry_widget):
+        """Окно со списком чатов; при выборе записывает в entry_widget @username или id:peer_id."""
+        top = ctk.CTkToplevel(self)
+        top.title(self._t("clone_group") if "group" in str(entry_widget) else self._t("clone_channel"))
+        top.configure(fg_color=self.bg_card)
+        top.geometry("420x360")
+        top.resizable(True, True)
+        ctk.CTkLabel(top, text=self._t("link_group") if "group" in str(entry_widget).lower() or not chats else self._t("link_channel"),
+                     font=self._font_section, text_color=self.cyan).pack(pady=(14, 8))
+        frame = ctk.CTkFrame(top, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=14, pady=(0, 14))
+        listbox_frame = ctk.CTkFrame(frame, fg_color=self.bg_input)
+        listbox_frame.pack(fill="both", expand=True)
+        scroll = ctk.CTkScrollableFrame(listbox_frame, fg_color=self.bg_input)
+        scroll.pack(fill="both", expand=True, padx=4, pady=4)
+        selected = [None]
+
+        def on_pick(item):
+            selected[0] = item
+            val = item.get("username") or ("id:" + str(item["peer_id"]))
+            entry_widget.delete(0, "end")
+            entry_widget.insert(0, val)
+            top.destroy()
+
+        for item in chats:
+            title = (item.get("title") or "").strip() or "(no name)"
+            username = item.get("username") or ""
+            lbl = title + ("  " + username if username else "")
+            btn = ctk.CTkButton(scroll, text=lbl, anchor="w", height=36, fg_color="transparent",
+                               hover_color=self.border_subtle, font=self._font_sub, text_color=self.text,
+                               command=lambda i=item: on_pick(i))
+            btn.pack(fill="x", pady=2)
+        ctk.CTkButton(frame, text=self._t("close"), width=100, height=36, font=self._font_btn,
+                      fg_color=self.bg_input, hover_color=self.border_subtle, command=top.destroy).pack(pady=(10, 0))
 
     def _show_lang_dialog(self):
         """Выпадающий список под кнопкой языка (без отдельного окна). Закрывается по клику снаружи или Escape."""
@@ -2398,6 +2493,9 @@ def _run_script_mode():
             src = args[args.index("--source") + 1] if "--source" in args else ""
             out = args[args.index("--output") + 1] if "--output" in args else ""
             asyncio.run(run_stats(src, out))
+        elif name == "list_my_chats.py":
+            from list_my_chats import main as m
+            asyncio.run(m(channel_only="--channels" in args, group_only="--groups" in args))
         else:
             print(f"Unknown script: {name}")
             sys.exit(1)

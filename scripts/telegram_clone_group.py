@@ -31,7 +31,27 @@ def get_invite_hash(link: str):
     return match.group(1) if match else None
 
 
+def _peer_id(entity):
+    if isinstance(entity, Channel):
+        return -1000000000000 - entity.id if entity.id > 0 else entity.id
+    if isinstance(entity, Chat):
+        return -entity.id
+    return None
+
+
 async def get_source_entity(client, source):
+    source = (source or "").strip()
+    if source.startswith("id:"):
+        try:
+            want_id = int(source[3:].strip())
+        except ValueError:
+            pass
+        else:
+            async for d in client.iter_dialogs():
+                pid = _peer_id(d.entity)
+                if pid == want_id and is_group(d.entity):
+                    return d.entity
+            raise ValueError("Group not found in your chats.")
     invite_hash = get_invite_hash(source)
     if invite_hash:
         try:
