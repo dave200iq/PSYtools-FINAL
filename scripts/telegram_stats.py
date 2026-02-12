@@ -8,15 +8,9 @@ import traceback
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# Фикс кодировки на Windows (emoji, кириллица и т.д.)
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _config import load_config, SESSION_PATH, get_api_credentials
+from _config import load_config, SESSION_PATH, get_api_credentials, fix_stdout_encoding
+fix_stdout_encoding()
 
 from telethon import TelegramClient
 from telethon.tl.types import Channel, MessageService

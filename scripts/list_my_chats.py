@@ -5,7 +5,8 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _config import load_config, SESSION_PATH, get_api_credentials
+from _config import load_config, SESSION_PATH, get_api_credentials, fix_stdout_encoding
+fix_stdout_encoding()
 
 from telethon import TelegramClient
 from telethon.tl.types import Channel, Chat

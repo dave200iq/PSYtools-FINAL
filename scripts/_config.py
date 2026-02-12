@@ -1,9 +1,23 @@
 """Общая загрузка конфигурации для скриптов."""
 import json
 import os
+import sys
 from pathlib import Path
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def fix_stdout_encoding():
+    """На Windows принудительно UTF-8 для stdout/stderr (кириллица в названиях групп и т.д.)."""
+    if sys.platform != "win32":
+        return
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 APP_DIR = Path(os.environ.get("TELEGRAM_APP_DIR", os.path.dirname(SCRIPT_DIR)))
 CONFIG_PATH = str(APP_DIR / "config.json")
 SESSION_NAME = os.environ.get("TELEGRAM_SESSION_NAME", "session_export").strip() or "session_export"

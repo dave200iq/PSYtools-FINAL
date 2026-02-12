@@ -6,7 +6,8 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _config import load_config, SESSION_PATH, get_api_credentials, write_progress
+from _config import load_config, SESSION_PATH, get_api_credentials, write_progress, fix_stdout_encoding
+fix_stdout_encoding()
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError, UserIsBlockedError, InputUserDeactivatedError
