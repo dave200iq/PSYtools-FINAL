@@ -910,6 +910,8 @@ LANG = {
         "merge_success": "Объединение завершено.",
         "merge_err": "Ошибка объединения.",
         "enter_merge_sources": "Укажите хотя бы одну группу.",
+        "merge_select_hint": "Клик по группе — добавить в список. Затем нажмите «Готово».",
+        "done": "Готово",
         "help_clone_group": "КЛОНИРОВАНИЕ ГРУППЫ\n\nКак работает: создаётся новая группа, копируются аватар, описание и все сообщения (включая топики форума).\n\nПрава: достаточно быть участником исходной группы. Админ не нужен.",
         "help_clone_channel": "КЛОНИРОВАНИЕ КАНАЛА\n\nКак работает: создаётся новый канал, копируются аватар, описание и все посты с медиа.\n\nПрава: достаточно быть подписчиком исходного канала. Админ не нужен.",
         "help_export": "ЭКСПОРТ ПОДПИСЧИКОВ\n\nКак работает: собирает список участников канала/группы и сохраняет в файл (ID, имя, @username в выбранном формате). Боты по умолчанию исключаются.\n\nПрава: нужны права администратора в канале или группе.",
@@ -1006,6 +1008,8 @@ LANG = {
         "merge_success": "Merge completed.",
         "merge_err": "Merge failed.",
         "enter_merge_sources": "Enter at least one group.",
+        "merge_select_hint": "Click a group to add it to the list, then press Done.",
+        "done": "Done",
         "help_clone_group": "CLONE GROUP\n\nHow it works: creates a new group, copies avatar, description and all messages (including forum topics).\n\nPermissions: you only need to be a member of the source group. Admin not required.",
         "help_clone_channel": "CLONE CHANNEL\n\nHow it works: creates a new channel, copies avatar, description and all posts with media.\n\nPermissions: you only need to be a subscriber of the source channel. Admin not required.",
         "help_export": "EXPORT SUBSCRIBERS\n\nHow it works: collects the list of channel/group members and saves to file (ID, name, @username in selected format). Bots are excluded by default.\n\nPermissions: admin rights required in the channel or group.",
@@ -1703,10 +1707,18 @@ class CtkApp(ctk.CTk):
                       font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
                       anchor="center", command=self._do_stop_script).pack(side="left")
 
-        ctk.CTkLabel(tab_merge, text=t("merge_sources_hint"), font=self._font_sub, text_color=self.text).pack(anchor="w")
-        self.merge_sources_text = ctk.CTkTextbox(tab_merge, height=100, corner_radius=0, font=self._font_sub,
+        merge_label_row = ctk.CTkFrame(tab_merge, fg_color="transparent")
+        merge_label_row.pack(anchor="w")
+        ctk.CTkLabel(merge_label_row, text=t("merge_sources_hint"), font=self._font_sub, text_color=self.text).pack(side="left")
+        merge_source_row = ctk.CTkFrame(tab_merge, fg_color="transparent")
+        merge_source_row.pack(fill="x", pady=(4, 6))
+        self.merge_sources_text = ctk.CTkTextbox(merge_source_row, height=100, corner_radius=0, font=self._font_sub,
             fg_color=self.bg_input, text_color=self.text)
-        self.merge_sources_text.pack(fill="x", pady=(4, 10))
+        self.merge_sources_text.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ctk.CTkButton(merge_source_row, text=t("select_from_chats"), width=160, height=40, corner_radius=10,
+                      font=self._font_btn, fg_color=self.bg_input, hover_color=self.border_subtle,
+                      border_width=1, border_color=self.border_subtle, text_color=self.text,
+                      command=self._select_chats_for_merge).pack(side="left")
         ctk.CTkLabel(tab_merge, text=t("merge_title"), font=self._font_sub, text_color=self.text).pack(anchor="w")
         self.entry_merge_title = mk_entry(tab_merge)
         self.entry_merge_title.pack(fill="x", pady=(0, 6))
@@ -2122,6 +2134,79 @@ class CtkApp(ctk.CTk):
             btn.pack(fill="x", pady=2)
         ctk.CTkButton(frame, text=self._t("close"), width=100, height=36, font=self._font_btn,
                       fg_color=self.bg_input, hover_color=self.border_subtle, command=top.destroy).pack(pady=(10, 0))
+
+    def _select_chats_for_merge(self):
+        """Загрузить список групп и показать диалог многократного выбора для объединения."""
+        from tkinter import messagebox
+        def run_fetch():
+            env = {**os.environ, "TELEGRAM_APP_DIR": str(APP_DIR), "PYTHONIOENCODING": "utf-8"}
+            if getattr(sys, "frozen", False):
+                cmd = [sys.executable, "--script", "list_my_chats.py"]
+            else:
+                cmd = [sys.executable, str(SCRIPTS_DIR / "list_my_chats.py")]
+            cmd.append("--groups")
+            try:
+                r = subprocess.run(cmd, cwd=str(APP_DIR), env=env, capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace")
+                out = (r.stdout or "").strip()
+                err = (r.stderr or "").strip()
+                if r.returncode != 0:
+                    msg = (err or out or "Script failed.").strip()
+                    try:
+                        data = json.loads(msg)
+                        if "error" in data:
+                            msg = data["error"]
+                    except Exception:
+                        pass
+                    self.after(0, lambda: messagebox.showerror("", msg[:300]))
+                    return
+                try:
+                    chats = json.loads(out) if out else []
+                except json.JSONDecodeError:
+                    self.after(0, lambda: messagebox.showerror("", "Invalid response from script."))
+                    return
+                if not chats:
+                    self.after(0, lambda: messagebox.showinfo("", self._t("enter_merge_sources")))
+                    return
+                self.after(0, lambda: self._show_merge_chat_select_dialog(chats))
+            except subprocess.TimeoutExpired:
+                self.after(0, lambda: messagebox.showerror("", "Timeout loading chats."))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("", str(e)[:200]))
+
+        threading.Thread(target=run_fetch, daemon=True).start()
+
+    def _show_merge_chat_select_dialog(self, chats):
+        """Диалог выбора нескольких групп: клик добавляет в поле источников, «Готово» — закрыть."""
+        top = ctk.CTkToplevel(self)
+        top.title(self._t("merge_groups"))
+        top.configure(fg_color=self.bg_card)
+        top.geometry("440x400")
+        top.resizable(True, True)
+        ctk.CTkLabel(top, text=self._t("merge_select_hint"), font=self._font_sub, text_color=self.text, wraplength=400).pack(pady=(14, 8))
+        frame = ctk.CTkFrame(top, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=14, pady=(0, 14))
+        listbox_frame = ctk.CTkFrame(frame, fg_color=self.bg_input)
+        listbox_frame.pack(fill="both", expand=True)
+        scroll = ctk.CTkScrollableFrame(listbox_frame, fg_color=self.bg_input)
+        scroll.pack(fill="both", expand=True, padx=4, pady=4)
+
+        def on_pick(item):
+            val = item.get("username") or ("id:" + str(item["peer_id"]))
+            cur = self.merge_sources_text.get("1.0", "end").strip()
+            new_line = val if not cur else cur + "\n" + val
+            self.merge_sources_text.delete("1.0", "end")
+            self.merge_sources_text.insert("1.0", new_line)
+
+        for item in chats:
+            title = (item.get("title") or "").strip() or "(no name)"
+            username = item.get("username") or ""
+            lbl = title + ("  " + username if username else "")
+            btn = ctk.CTkButton(scroll, text=lbl, anchor="w", height=36, fg_color="transparent",
+                               hover_color=self.border_subtle, font=self._font_sub, text_color=self.text,
+                               command=lambda i=item: on_pick(i))
+            btn.pack(fill="x", pady=2)
+        ctk.CTkButton(frame, text=self._t("done"), width=120, height=36, font=self._font_btn,
+                      fg_color=self.emerald, hover_color="#a8d650", text_color="#000000", command=top.destroy).pack(pady=(10, 0))
 
     def _show_lang_dialog(self):
         """Выпадающий список под кнопкой языка (без отдельного окна). Закрывается по клику снаружи или Escape."""
