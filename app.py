@@ -835,6 +835,7 @@ LANG = {
         "help_api": "? Как получить API",
         "clone_group": "Клонировать группу",
         "clone_channel": "Клонировать канал",
+        "merge_groups": "Объединить группы",
         "export": "Экспорт подписчиков",
         "link_group": "Ссылка или @username группы:",
         "select_from_chats": "Выбрать из моих чатов",
@@ -902,6 +903,13 @@ LANG = {
         "phone_number": "Номер",
         "show_api_settings": "Настройки API",
         "load_profile": "Показать профиль",
+        "merge_sources_hint": "Группы для объединения (ссылки или @username, через запятую или с новой строки):",
+        "merge_title": "Название новой группы:",
+        "merge_delay": "Задержка между сообщениями (сек):",
+        "run_merge": "Запустить объединение",
+        "merge_success": "Объединение завершено.",
+        "merge_err": "Ошибка объединения.",
+        "enter_merge_sources": "Укажите хотя бы одну группу.",
         "help_clone_group": "КЛОНИРОВАНИЕ ГРУППЫ\n\nКак работает: создаётся новая группа, копируются аватар, описание и все сообщения (включая топики форума).\n\nПрава: достаточно быть участником исходной группы. Админ не нужен.",
         "help_clone_channel": "КЛОНИРОВАНИЕ КАНАЛА\n\nКак работает: создаётся новый канал, копируются аватар, описание и все посты с медиа.\n\nПрава: достаточно быть подписчиком исходного канала. Админ не нужен.",
         "help_export": "ЭКСПОРТ ПОДПИСЧИКОВ\n\nКак работает: собирает список участников канала/группы и сохраняет в файл (ID, имя, @username в выбранном формате). Боты по умолчанию исключаются.\n\nПрава: нужны права администратора в канале или группе.",
@@ -923,6 +931,7 @@ LANG = {
         "help_api": "? How to get API",
         "clone_group": "Clone Group",
         "clone_channel": "Clone Channel",
+        "merge_groups": "Merge Groups",
         "export": "Export Subscribers",
         "link_group": "Link or @username of group:",
         "select_from_chats": "Select from my chats",
@@ -990,6 +999,13 @@ LANG = {
         "phone_number": "Phone",
         "show_api_settings": "API settings",
         "load_profile": "Show profile",
+        "merge_sources_hint": "Groups to merge (links or @username, comma or newline separated):",
+        "merge_title": "New group title:",
+        "merge_delay": "Delay between messages (sec):",
+        "run_merge": "Run merge",
+        "merge_success": "Merge completed.",
+        "merge_err": "Merge failed.",
+        "enter_merge_sources": "Enter at least one group.",
         "help_clone_group": "CLONE GROUP\n\nHow it works: creates a new group, copies avatar, description and all messages (including forum topics).\n\nPermissions: you only need to be a member of the source group. Admin not required.",
         "help_clone_channel": "CLONE CHANNEL\n\nHow it works: creates a new channel, copies avatar, description and all posts with media.\n\nPermissions: you only need to be a subscriber of the source channel. Admin not required.",
         "help_export": "EXPORT SUBSCRIBERS\n\nHow it works: collects the list of channel/group members and saves to file (ID, name, @username in selected format). Bots are excluded by default.\n\nPermissions: admin rights required in the channel or group.",
@@ -1624,11 +1640,12 @@ class CtkApp(ctk.CTk):
             pass
         tab_group = self.tabview.add(t("clone_group"))
         tab_channel = self.tabview.add(t("clone_channel"))
+        tab_merge = self.tabview.add(t("merge_groups"))
         tab_export = self.tabview.add(t("export"))
         tab_mass = self.tabview.add(t("mass_send"))
         tab_stats = self.tabview.add(t("stats"))
 
-        for tab in (tab_group, tab_channel, tab_export, tab_mass, tab_stats):
+        for tab in (tab_group, tab_channel, tab_merge, tab_export, tab_mass, tab_stats):
             tab.configure(fg_color=self.bg_card)
 
         def mk_entry(parent, w=440):
@@ -1683,6 +1700,28 @@ class CtkApp(ctk.CTk):
                       font=self._font_btn, fg_color=self.emerald, hover_color="#a8d650", text_color="#000000",
                       command=self.run_clone_channel).pack(side="left", padx=(0, 8))
         ctk.CTkButton(ch_btn_row, text=t("stop"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
+                      anchor="center", command=self._do_stop_script).pack(side="left")
+
+        ctk.CTkLabel(tab_merge, text=t("merge_sources_hint"), font=self._font_sub, text_color=self.text).pack(anchor="w")
+        self.merge_sources_text = ctk.CTkTextbox(tab_merge, height=100, corner_radius=0, font=self._font_sub,
+            fg_color=self.bg_input, text_color=self.text)
+        self.merge_sources_text.pack(fill="x", pady=(4, 10))
+        ctk.CTkLabel(tab_merge, text=t("merge_title"), font=self._font_sub, text_color=self.text).pack(anchor="w")
+        self.entry_merge_title = mk_entry(tab_merge)
+        self.entry_merge_title.pack(fill="x", pady=(0, 6))
+        merge_delay_row = ctk.CTkFrame(tab_merge, fg_color="transparent")
+        merge_delay_row.pack(anchor="w", pady=(0, 18))
+        ctk.CTkLabel(merge_delay_row, text=t("merge_delay"), font=self._font_sub, text_color=self.text).pack(side="left", padx=(0, 8))
+        self.entry_merge_delay = mk_entry(merge_delay_row, 80)
+        self.entry_merge_delay.pack(side="left")
+        self.entry_merge_delay.insert(0, "2")
+        merge_btn_row = ctk.CTkFrame(tab_merge, fg_color="transparent")
+        merge_btn_row.pack(anchor="center")
+        ctk.CTkButton(merge_btn_row, text=t("run_merge"), width=_run_w, height=40, corner_radius=self.radius_pill,
+                      font=self._font_btn, fg_color=self.emerald, hover_color="#a8d650", text_color="#000000",
+                      command=self.run_merge).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(merge_btn_row, text=t("stop"), width=_run_w, height=40, corner_radius=self.radius_pill,
                       font=self._font_btn, fg_color=self.rose, hover_color="#ff6060", text_color="#000000",
                       anchor="center", command=self._do_stop_script).pack(side="left")
 
@@ -2373,6 +2412,27 @@ class CtkApp(ctk.CTk):
                    on_error=lambda e: messagebox.showerror("", f"{self._t('clone_err')} {e}"),
                    progress_path=pp, on_finish=self._stop_progress_poll)
 
+    def run_merge(self):
+        from tkinter import messagebox
+        self.save_settings()
+        raw = self.merge_sources_text.get("1.0", "end").strip()
+        sources = ",".join(s.strip() for s in raw.replace(",", "\n").splitlines() if s.strip())
+        if not sources:
+            messagebox.showwarning("", self._t("enter_merge_sources"))
+            return
+        title = self.entry_merge_title.get().strip() or "Merged"
+        try:
+            delay = float(self.entry_merge_delay.get().strip() or "2")
+        except ValueError:
+            delay = 2.0
+        pp = str(APP_DIR / ".progress_merge")
+        self._start_progress_poll(pp)
+        run_script("telegram_merge_groups.py", ["--sources", sources, "--title", title, "--delay", str(delay)],
+                   self.log, self, proc_holder=self._run_procs,
+                   on_done=lambda: messagebox.showinfo("", self._t("merge_success")),
+                   on_error=lambda e: messagebox.showerror("", f"{self._t('merge_err')} {e}"),
+                   progress_path=pp, on_finish=self._stop_progress_poll)
+
     def run_export(self):
         from tkinter import messagebox
         self.save_settings()
@@ -2476,6 +2536,25 @@ def _run_script_mode():
             fmt = get_arg("--format", "simple")
             incl = "--include-bots" in args
             asyncio.run(run_export(src, out, fmt, incl))
+        elif name == "telegram_merge_groups.py":
+            from telegram_merge_groups import main as merge_main
+            def get_arg(key, default=""):
+                try:
+                    idx = args.index(key)
+                    if idx + 1 < len(args):
+                        return args[idx + 1]
+                except (ValueError, IndexError):
+                    pass
+                return default
+            sources = get_arg("--sources", "")
+            title = get_arg("--title", "Merged")
+            try:
+                delay = float(get_arg("--delay", "2"))
+            except ValueError:
+                delay = 2.0
+            if not sources:
+                raise ValueError("--sources is required")
+            asyncio.run(merge_main(sources, title, delay))
         elif name == "telegram_mass_send.py":
             from telegram_mass_send import run_mass_send
             src = args[args.index("--source") + 1] if "--source" in args else ""
